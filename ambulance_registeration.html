@@ -1,15 +1,13 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <title>Driver Registration</title>
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-  <script src="hospitals.js"></script>
   <style>
     body { font-family: system-ui; margin: 20px; }
     input, select, button { display: block; margin: 10px 0; padding: 8px; width: 100%; max-width: 400px; }
+    #status { margin-top: 10px; font-weight: bold; color: green; }
   </style>
 </head>
 <body>
@@ -21,8 +19,23 @@
   <div id="status"></div>
 
   <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getDatabase, ref, set } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+    import { odishaHospitals } from './Hospitals.js'; // Make sure path is correct
+
     // Firebase config
-    import db from "./firebase.js";
+    const firebaseConfig = {
+      apiKey: "AIzaSyCVOmAoo9h2-VJ6I7OCK2Naj2fYQq_Io1s",
+      authDomain: "ambulance-tracking-syste-21793.firebaseapp.com",
+      databaseURL: "https://ambulance-tracking-syste-21793-default-rtdb.asia-southeast1.firebasedatabase.app/",
+      projectId: "ambulance-tracking-syste-21793",
+      storageBucket: "ambulance-tracking-syste-21793.appspot.com",
+      messagingSenderId: "1057546446784",
+      appId: "1:1057546446784:web:549e7f233fdd29786fca25",
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
 
     // Populate hospitals dropdown
     const hospitalSelect = document.getElementById("hospitalSelect");
@@ -39,12 +52,17 @@
         return;
       }
 
-      const driverRef = db.ref("drivers/" + plate);
-      await driverRef.set({ driverName: name, ambulancePlate: plate, hospital });
+      try {
+        const driverRef = ref(db, "drivers/" + plate);
+        await set(driverRef, { driverName: name, ambulancePlate: plate, hospital });
 
-      localStorage.setItem("driverPlate", plate); // Save login locally
-      document.getElementById("status").innerText = "✅ Registered successfully!";
-      setTimeout(() => { window.location.href = "ambulance_tracking.html"; }, 1500);
+        localStorage.setItem("driverPlate", plate); // Save login locally
+        document.getElementById("status").innerText = "✅ Registered successfully!";
+        setTimeout(() => { window.location.href = "ambulance_tracking.html"; }, 1500);
+      } catch (error) {
+        console.error("Error registering driver:", error);
+        alert("❌ Registration failed. See console for details.");
+      }
     };
   </script>
 </body>

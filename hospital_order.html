@@ -1,18 +1,13 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
-    <meta charset="utf-8" />
+    <meta charset="UTF-8" />
     <title>Hospital — Request Ambulance</title>
     <meta name="viewport" content="width=device-width,initial-scale=1" />
 
     <!-- Leaflet -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-    <script src="hospitals.js"></script>
-
-    <!-- Firebase -->
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
     <style>
       body {
@@ -44,27 +39,38 @@
         width: 100%;
         margin-top: 20px;
       }
+      ul {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        max-width: 480px;
+      }
+      li {
+        padding: 5px;
+        cursor: pointer;
+        border-bottom: 1px solid #eee;
+      }
+      li:hover {
+        background: #f0f0f0;
+      }
     </style>
   </head>
   <body>
     <h1>Hospital — Request Ambulance</h1>
+
     <div class="card">
-      <input id="hospitalId"  placeholder="Hospital Name" />
-      <ul
-        id="hospitalSuggestions"
-        style="max-width: 480px; list-style: none; padding: 0; margin: 0"
-      ></ul>
+      <input id="hospitalId" placeholder="Hospital Name" />
+      <ul id="hospitalSuggestions"></ul>
+
       <input id="patientName" placeholder="Patient Name" />
       <input
-        type="text"
         id="pickupSearch"
         placeholder="Enter address or pincode"
         autocomplete="off"
       />
-      <ul
-        id="suggestions"
-        style="max-width: 480px; list-style: none; padding: 0; margin: 0"
-      ></ul>
+      <ul id="suggestions"></ul>
 
       <button id="useMyLocation">Use My Current Location</button>
       <button id="useTypedLocation">Use This Location</button>
@@ -79,39 +85,72 @@
       <button id="requestBtn">Request Ambulance</button>
       <div id="statusArea" class="small">No requests yet.</div>
     </div>
+
     <div id="map"></div>
 
     <script type="module">
-      import db from "./firebase.js";
+      import { odishaHospitals } from "./Hospitals.js";
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+      import {
+        getDatabase,
+        ref,
+        push,
+        set,
+        onValue,
+        serverTimestamp,
+      } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
-      const hospitalIdInput = document.getElementById("hospitalId");
+      // 🔹 Firebase Config
+      const firebaseConfig = {
+        apiKey: "AIzaSyCVOmAoo9h2-VJ6I7OCK2Naj2fYQq_Io1s",
+        authDomain: "ambulance-tracking-syste-21793.firebaseapp.com",
+        databaseURL:
+          "https://ambulance-tracking-syste-21793-default-rtdb.asia-southeast1.firebasedatabase.app/",
+        projectId: "ambulance-tracking-syste-21793",
+        storageBucket: "ambulance-tracking-syste-21793.appspot.com",
+        messagingSenderId: "1057546446784",
+        appId: "1:1057546446784:web:549e7f233fdd29786fca25",
+      };
+
+      const app = initializeApp(firebaseConfig);
+      const db = getDatabase(app);
+
+      const hospitalInput = document.getElementById("hospitalId");
+      const hospitalSuggestions = document.getElementById(
+        "hospitalSuggestions"
+      );
       const patientNameInput = document.getElementById("patientName");
       const pickupSearchInput = document.getElementById("pickupSearch");
       const statusArea = document.getElementById("statusArea");
       let selectedCoords = null;
+      let pickupMarker = null;
+      let ambulanceMarker = null;
 
       // --- Map ---
       const map = L.map("map").setView([20.5937, 78.9629], 5);
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution: "&copy; OpenStreetMap contributors",
       }).addTo(map);
-      let pickupMarker = null;
-      let ambulanceMarker = null;
 
-      function updateMap(lat, lng, text, markerRef) {
+      function safeUpdateMap(lat, lng, text, markerRef) {
+        if (!lat || !lng || isNaN(lat) || isNaN(lng)) {
+          console.warn("⚠️ Skipping marker update — missing lat/lng");
+          return markerRef;
+        }
         if (markerRef) map.removeLayer(markerRef);
         map.setView([lat, lng], 15);
         return L.marker([lat, lng]).addTo(map).bindPopup(text).openPopup();
       }
 
-      // --- Search Suggestions ---
+      // --- Pickup Search ---
       const suggestionsList = document.getElementById("suggestions");
-      pickupSearchInput.addEventListener("input", async function () {
+      pickupSearchInput.addEventListener("input", async () => {
         const query = pickupSearchInput.value.trim();
         if (query.length < 3) {
           suggestionsList.innerHTML = "";
           return;
         }
+
         const resp = await fetch(
           `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
             query
@@ -122,11 +161,10 @@
         data.forEach((place) => {
           const li = document.createElement("li");
           li.textContent = place.display_name;
-          li.style.cursor = "pointer";
           li.onclick = () => {
             pickupSearchInput.value = place.display_name;
             selectedCoords = [parseFloat(place.lat), parseFloat(place.lon)];
-            pickupMarker = updateMap(
+            pickupMarker = safeUpdateMap(
               selectedCoords[0],
               selectedCoords[1],
               "Pickup Location",
@@ -138,11 +176,12 @@
         });
       });
 
+      // --- Current Location ---
       document.getElementById("useMyLocation").onclick = () => {
         navigator.geolocation.getCurrentPosition((pos) => {
           selectedCoords = [pos.coords.latitude, pos.coords.longitude];
           pickupSearchInput.value = "Your Current Location";
-          pickupMarker = updateMap(
+          pickupMarker = safeUpdateMap(
             selectedCoords[0],
             selectedCoords[1],
             "Pickup Location",
@@ -150,6 +189,7 @@
           );
         });
       };
+
       document.getElementById("useTypedLocation").onclick = () => {
         if (!selectedCoords) {
           alert("Select a location first!");
@@ -158,72 +198,15 @@
         alert("Location confirmed: " + pickupSearchInput.value);
       };
 
-      // --- Request Ambulance ---
-      document.getElementById("requestBtn").onclick = async () => {
-        if (!selectedCoords) {
-          alert("Select a location first!");
-          return;
-        }
-        const hospitalId = hospitalIdInput.value.trim();
-        const patientName = patientNameInput.value.trim();
-        if (!hospitalId || !patientName) {
-          alert("Enter hospital ID and patient name!");
-          return;
-        }
-
-        const reqRef = db.ref("requests").push();
-        const requestData = {
-          hospitalId,
-          patientName,
-          pickup: { lat: selectedCoords[0], lng: selectedCoords[1] },
-          address: pickupSearchInput.value,
-          priority: document.getElementById("priority").value,
-          notes: document.getElementById("notes").value.trim(),
-          createdAt: firebase.database.ServerValue.TIMESTAMP,
-          status: "requested",
-          ambulanceId: null,
-          ambulancePlate: null,
-          ambulanceDriver: null,
-        };
-        await reqRef.set(requestData);
-        statusArea.innerText = `Request created (ID: ${reqRef.key}). Waiting for ambulance...`;
-
-        // Listen for acceptance
-        reqRef.on("value", (snapshot) => {
-          const updated = snapshot.val();
-          if (!updated) return;
-          if (updated.status === "Accepted") {
-            alert(
-              `🚑 Ambulance Accepted!\nPlate: ${updated.ambulancePlate}\nDriver: ${updated.ambulanceDriver}`
-            );
-            statusArea.innerText = `Ambulance assigned: ${updated.ambulancePlate}`;
-            // Add ambulance marker
-            ambulanceMarker = updateMap(
-              updated.ambulanceLat,
-              updated.ambulanceLng,
-              `Ambulance: ${updated.ambulancePlate}`,
-              ambulanceMarker
-            );
-            reqRef.off();
-          }
-        });
-      };
-
-      const hospitalInput = document.getElementById("hospitalId");
-      const hospitalSuggestions = document.getElementById(
-        "hospitalSuggestions"
-      );
-
+      // --- Hospital Autocomplete ---
       hospitalInput.addEventListener("input", () => {
         const query = hospitalInput.value.toLowerCase().trim();
         hospitalSuggestions.innerHTML = "";
-
         if (!query) return;
 
         const matches = odishaHospitals.filter((h) =>
           h.toLowerCase().includes(query)
         );
-
         if (matches.length === 0) {
           const li = document.createElement("li");
           li.textContent = "No hospitals found";
@@ -234,18 +217,67 @@
         matches.forEach((hospital) => {
           const li = document.createElement("li");
           li.textContent = hospital;
-          li.style.cursor = "pointer";
-          li.style.padding = "5px";
-          li.style.borderBottom = "1px solid #eee";
-
-          li.addEventListener("click", () => {
+          li.onclick = () => {
             hospitalInput.value = hospital;
             hospitalSuggestions.innerHTML = "";
-          });
-
+          };
           hospitalSuggestions.appendChild(li);
         });
       });
+
+      // --- Request Ambulance ---
+      document.getElementById("requestBtn").onclick = async () => {
+        if (!selectedCoords) {
+          alert("Select a location first!");
+          return;
+        }
+        const hospitalId = hospitalInput.value.trim();
+        const patientName = patientNameInput.value.trim();
+        if (!hospitalId || !patientName) {
+          alert("Enter hospital and patient name!");
+          return;
+        }
+
+        const requestRef = push(ref(db, "requests"));
+        const requestData = {
+          hospitalId,
+          patientName,
+          pickup: { lat: selectedCoords[0], lng: selectedCoords[1] },
+          address: pickupSearchInput.value,
+          priority: document.getElementById("priority").value,
+          notes: document.getElementById("notes").value.trim(),
+          createdAt: serverTimestamp(),
+          status: "requested",
+          ambulanceId: null,
+          ambulancePlate: null,
+          ambulanceDriver: null,
+          ambulanceLat: null,
+          ambulanceLng: null,
+        };
+
+        await set(requestRef, requestData);
+        statusArea.innerText = `Request created (ID: ${requestRef.key}). Waiting for ambulance...`;
+
+        // Listen for updates (ambulance accepted)
+        onValue(requestRef, (snapshot) => {
+          const updated = snapshot.val();
+          if (!updated) return;
+          if (updated.status === "Accepted") {
+            alert(
+              `🚑 Ambulance Accepted!\nPlate: ${updated.ambulancePlate}\nDriver: ${updated.ambulanceDriver}`
+            );
+            statusArea.innerText = `Ambulance assigned: ${updated.ambulancePlate}`;
+            if (updated.ambulanceLat && updated.ambulanceLng) {
+              ambulanceMarker = safeUpdateMap(
+                updated.ambulanceLat,
+                updated.ambulanceLng,
+                `Ambulance: ${updated.ambulancePlate}`,
+                ambulanceMarker
+              );
+            }
+          }
+        });
+      };
     </script>
   </body>
 </html>

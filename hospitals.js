@@ -1,5 +1,5 @@
 // hospitals.js
-const odishaHospitals = [
+export const odishaHospitals = [
   "AIIMS Bhubaneswar",
   "SCB Medical College, Cuttack",
   "KIMS, Bhubaneswar",

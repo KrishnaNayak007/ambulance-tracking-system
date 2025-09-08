@@ -1,10 +1,9 @@
 import express from "express";
 import cors from "cors";
-require("dotenv").config();
 
 const app = express();
 
-const nominatimUrl = process.env.NOMINATIM_API_URL;
+const nominatimUrl = "https://nominatim.openstreetmap.org";
 
 //Allow all origins (for development)
 app.use(cors());

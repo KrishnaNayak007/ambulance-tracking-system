@@ -1,137 +1,148 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="utf-8">
-<title>Ambulance Tracking</title>
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-<script src="hospitals.js"></script>
-
-<style>
-body { margin:0; font-family:system-ui; }
-#map { height:100vh; width:100%; }
-</style>
+  <meta charset="utf-8">
+  <title>🚑 Ambulance Tracking</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <style>
+    body { font-family: system-ui; margin: 0; }
+    #map { height: 80vh; }
+    #info { padding: 10px; background: #f3f4f6; }
+    button { padding: 8px 12px; margin-top: 10px; cursor: pointer; }
+    /* Popup modal */
+    #popup {
+      display:none; position:fixed; top:0; left:0; width:100%; height:100%;
+      background:rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center;
+      z-index:1000;
+    }
+    #popupBox {
+      background:#fff; padding:20px; border-radius:8px; width:300px; text-align:center;
+      box-shadow:0 4px 10px rgba(0,0,0,0.3);
+    }
+    #popupBox h3 { margin:0 0 10px; }
+    #popupBox button { margin: 5px; }
+    #rejectBtn { background:#dc2626; color:#fff; border:none; }
+    #acceptBtn { background:#16a34a; color:#fff; border:none; }
+  </style>
 </head>
 <body>
-<div id="map"></div>
-<script type="module">
-import db from "./firebase.js";
+  <h2 style="padding:10px;">🚑 Ambulance Tracking</h2>
+  <div id="map"></div>
+  <div id="info">No active requests.</div>
 
-// Ambulance info
-let currentHospital = "null";
-const ambulancePlate = "null";
-const ambulanceDriver = "null";
+  <!-- Custom Popup Modal -->
+  <div id="popup">
+    <div id="popupBox">
+      <h3>🚨 New Request</h3>
+      <p id="popupText"></p>
+      <button id="acceptBtn">✅ Accept</button>
+      <button id="rejectBtn">❌ Reject</button>
+    </div>
+  </div>
 
-const driverPlate = localStorage.getItem("driverPlate");
-if (!driverPlate) {
-  alert("Please register first!");
-  window.location.href = "driver_register.html";
-} else {
-  firebase.database().ref("drivers/" + driverPlate).once("value", snap => {
-    const data = snap.val();
-    if (!data) {
-      alert("Driver not found! Please register again.");
-      window.location.href = "driver_register.html";
-    } else {
-      ambulancePlate = data.ambulancePlate;
-      ambulanceDriver = data.driverName;
-      currentHospital = data.hospital;
-      alert(`🚑 Welcome ${ambulanceDriver} (${ambulancePlate})\nHospital: ${currentHospital}`);
-    }
-  });
-}
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getDatabase, ref, onValue, update, remove } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
-const map = L.map("map").setView([20.5937,78.9629],5);
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-  attribution:"&copy; OpenStreetMap contributors"
-}).addTo(map);
+    const firebaseConfig = {
+      apiKey: "AIzaSyCVOmAoo9h2-VJ6I7OCK2Naj2fYQq_Io1s",
+      authDomain: "ambulance-tracking-syste-21793.firebaseapp.com",
+      databaseURL: "https://ambulance-tracking-syste-21793-default-rtdb.asia-southeast1.firebasedatabase.app/",
+      projectId: "ambulance-tracking-syste-21793",
+      storageBucket: "ambulance-tracking-syste-21793.appspot.com",
+      messagingSenderId: "1057546446784",
+      appId: "1:1057546446784:web:549e7f233fdd29786fca25",
+    };
 
-let ambulanceMarker = null;
-const alertedRequests = new Set();
-const pageLoadTime = Date.now();
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
 
-// Accept request
-function acceptRequest(id, lat, lng) {
-  navigator.geolocation.getCurrentPosition(pos=>{
-    db.ref("requests/"+id).update({
-      status:"Accepted",
-      ambulanceId:ambulancePlate,
-      ambulancePlate:ambulancePlate,
-      ambulanceDriver:ambulanceDriver,
-      ambulanceLat:pos.coords.latitude,
-      ambulanceLng:pos.coords.longitude
-    });
-    alert("🚑 You accepted the request!");
-    startLiveTracking(id);
-  });
-}
+    // Map setup
+    const map = L.map("map").setView([20.2961, 85.8245], 12); // default Bhubaneswar
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "© OpenStreetMap contributors"
+    }).addTo(map);
 
-// Live tracking
-function startLiveTracking(id){
-  setInterval(()=>{
-    navigator.geolocation.getCurrentPosition(pos=>{
-      const lat = pos.coords.latitude;
-      const lng = pos.coords.longitude;
-      db.ref("requests/"+id).update({
-        ambulanceLat: lat,
-        ambulanceLng: lng,
-        status:"En Route"
+    const infoDiv = document.getElementById("info");
+    let activeRequestId = null;
+    let pickupMarker = null;
+
+    // Modal references
+    const popup = document.getElementById("popup");
+    const popupText = document.getElementById("popupText");
+    const acceptBtn = document.getElementById("acceptBtn");
+    const rejectBtn = document.getElementById("rejectBtn");
+
+    // Driver details
+    const driverPlate = localStorage.getItem("driverPlate") || "TEST123";
+    const driverName = localStorage.getItem("driverName") || "Test Driver";
+
+    // Listen for new requests
+    const requestsRef = ref(db, "requests");
+    onValue(requestsRef, (snapshot) => {
+      snapshot.forEach((child) => {
+        const requestId = child.key;
+        const req = child.val();
+
+        // Only show if not already assigned
+        if (req.status === "requested" && !activeRequestId) {
+          popupText.innerHTML = `
+            Patient: ${req.patientName || "-"}<br>
+            Hospital: ${req.hospitalId || "-"}<br>
+            Priority: ${req.priority || "normal"}
+          `;
+          popup.style.display = "flex";
+
+          // Accept
+          acceptBtn.onclick = () => {
+            popup.style.display = "none";
+            activeRequestId = requestId;
+
+            update(ref(db, "requests/" + requestId), {
+              status: "Accepted",
+              ambulancePlate: driverPlate,
+              ambulanceDriver: driverName
+            });
+
+            // Show pickup on map
+            if (req.pickup?.lat && req.pickup?.lng) {
+              if (pickupMarker) map.removeLayer(pickupMarker);
+              pickupMarker = L.marker([req.pickup.lat, req.pickup.lng])
+                .addTo(map)
+                .bindPopup(`🏥 Pickup for ${req.patientName}`)
+                .openPopup();
+              map.setView([req.pickup.lat, req.pickup.lng], 14);
+            }
+
+            // Show info + complete option
+            infoDiv.innerHTML = `
+              <b>Active Request:</b><br>
+              Patient: ${req.patientName}<br>
+              Hospital: ${req.hospitalId}<br>
+              Priority: ${req.priority}<br>
+              <button id="completeBtn">✅ Complete Trip</button>
+            `;
+
+            document.getElementById("completeBtn").onclick = async () => {
+              if (!activeRequestId) return;
+              await remove(ref(db, "requests/" + activeRequestId));
+              alert("✅ Trip completed!");
+              infoDiv.innerHTML = "No active requests.";
+              if (pickupMarker) { map.removeLayer(pickupMarker); pickupMarker = null; }
+              activeRequestId = null;
+            };
+          };
+
+          // Reject
+          rejectBtn.onclick = () => {
+            popup.style.display = "none";
+            console.log("Request ignored by driver");
+          };
+        }
       });
-      if(!ambulanceMarker){
-        ambulanceMarker = L.marker([lat,lng],{icon:L.divIcon({html:"🚑", iconSize:[24,24]})}).addTo(map);
-      } else {
-        ambulanceMarker.setLatLng([lat,lng]);
-      }
-      map.setView([lat,lng],15);
     });
-  },5000);
-}
-
-// Listen for new requests
-db.ref("requests").on("child_added", snapshot=>{
-  const req = snapshot.val();
-  const id = snapshot.key;
-
-  if(!req) return;
-  if (!currentHospital || req.hospitalId !== currentHospital) return;
-
-  // Skip already alerted
-  if(alertedRequests.has(id)) return;
-  // Skip old requests
-  if(req.createdAt && req.createdAt < pageLoadTime) return;
-
-  alertedRequests.add(id);
-
-  alert(`🚨 New Request!\nPatient: ${req.patientName}\nPriority: ${req.priority}`);
-
-  if(req.pickup?.lat && req.pickup?.lng){
-    map.setView([req.pickup.lat, req.pickup.lng],15);
-    L.marker([req.pickup.lat, req.pickup.lng],{
-      icon:L.divIcon({html:"📍", iconSize:[24,24]})
-    }).addTo(map).bindPopup(
-      `<b>Patient:</b> ${req.patientName}<br>
-      <button onclick="acceptRequest('${id}',${req.pickup.lat},${req.pickup.lng})">Accept</button>`
-    ).openPopup();
-  }
-});
-
-// Example: when driver presses "Drop at Hospital" button
-function completeTrip(requestId) {
-  const requestRef = ref(db, "requests/" + requestId);
-
-  // Remove the request completely
-  remove(requestRef)
-    .then(() => {
-      alert("Trip completed and request removed from database.");
-    })
-    .catch((error) => {
-      console.error("Error removing request:", error);
-    });
-}
-
-</script>
+  </script>
 </body>
 </html>
