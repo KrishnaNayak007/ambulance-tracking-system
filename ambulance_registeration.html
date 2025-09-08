@@ -1,132 +1,61 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <title>Ambulance Registration</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-
-  <!-- Firebase -->
+  <meta charset="utf-8">
+  <title>Driver Registration</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-
+  <script src="hospitals.js"></script>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 0; padding: 0;
-      background: #f5f5f5;
-    }
-    header {
-      background: #2563eb;
-      color: white;
-      padding: 14px 20px;
-      font-size: 20px;
-    }
-    .container {
-      max-width: 480px;
-      margin: 40px auto;
-      padding: 20px;
-      background: white;
-      border-radius: 8px;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-    }
-    label {
-      display: block;
-      margin-top: 12px;
-      font-weight: bold;
-      font-size: 14px;
-    }
-    input, select, button {
-      width: 100%;
-      padding: 10px;
-      margin-top: 6px;
-      border: 1px solid #ccc;
-      border-radius: 6px;
-      font-size: 14px;
-    }
-    button {
-      margin-top: 20px;
-      background: #2563eb;
-      color: white;
-      border: none;
-      cursor: pointer;
-    }
-    button:hover {
-      background: #1d4ed8;
-    }
-    .success {
-      margin-top: 15px;
-      color: green;
-      font-size: 14px;
-    }
+    body { font-family: system-ui; margin: 20px; }
+    input, select, button { display: block; margin: 10px 0; padding: 8px; width: 100%; max-width: 400px; }
   </style>
 </head>
 <body>
-  <header>🚑 Ambulance Registration</header>
-
-  <div class="container">
-    <h2>Register Ambulance</h2>
-    <form id="ambulanceForm">
-      <label for="plate">Ambulance No. Plate</label>
-      <input type="text" id="plate" required placeholder="e.g. MH12AB1234" />
-
-      <label for="hospital">Hospital Name</label>
-      <input type="text" id="hospital" required placeholder="e.g. City Hospital" />
-
-      <label for="driver">Driver Name</label>
-      <input type="text" id="driver" required placeholder="e.g. Rajesh Kumar" />
-
-      <button type="submit">Register</button>
-    </form>
-    <div class="success" id="successMsg"></div>
-  </div>
+  <h2>🚑 Driver Registration</h2>
+  <input id="driverName" placeholder="Driver Name" />
+  <input id="ambulancePlate" placeholder="Ambulance Plate No." />
+  <select id="hospitalSelect"></select>
+  <button id="registerBtn">Register</button>
+  <div id="status"></div>
 
   <script>
-    // Firebase Config
+    // Firebase config
     const firebaseConfig = {
       apiKey: "AIzaSyCVOmAoo9h2-VJ6I7OCK2Naj2fYQq_Io1s",
-        authDomain: "ambulance-tracking-syste-21793.firebaseapp.com",
-        databaseURL:
-          "https://ambulance-tracking-syste-21793-default-rtdb.asia-southeast1.firebasedatabase.app/",
-        projectId: "ambulance-tracking-syste-21793",
-        storageBucket: "ambulance-tracking-syste-21793.appspot.com",
-        messagingSenderId: "1057546446784",
-        appId: "1:1057546446784:web:9d31ba29b95928346fca25",
-        measurementId: "G-TSHRR7T645",
+      authDomain: "ambulance-tracking-syste-21793.firebaseapp.com",
+      databaseURL: "https://ambulance-tracking-syste-21793-default-rtdb.asia-southeast1.firebasedatabase.app/",
+      projectId: "ambulance-tracking-syste-21793",
+      storageBucket: "ambulance-tracking-syste-21793.appspot.com",
+      messagingSenderId: "1057546446784",
+      appId: "1:1057546446784:web:549e7f233fdd29786fca25",
     };
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    const form = document.getElementById("ambulanceForm");
-    const successMsg = document.getElementById("successMsg");
+    // Populate hospitals dropdown
+    const hospitalSelect = document.getElementById("hospitalSelect");
+    hospitalSelect.innerHTML = `<option value="">-- Select Hospital --</option>` +
+      odishaHospitals.map(h => `<option value="${h}">${h}</option>`).join("");
 
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
+    document.getElementById("registerBtn").onclick = async () => {
+      const name = document.getElementById("driverName").value.trim();
+      const plate = document.getElementById("ambulancePlate").value.trim();
+      const hospital = hospitalSelect.value;
 
-      const plate = document.getElementById("plate").value.trim();
-      const hospital = document.getElementById("hospital").value.trim();
-      const driver = document.getElementById("driver").value.trim();
-
-      if (!plate || !hospital || !driver) {
-        alert("All fields are required!");
+      if (!name || !plate || !hospital) {
+        alert("Fill all fields!");
         return;
       }
 
-      const ambulanceData = {
-        plate,
-        hospital,
-        driver,
-        createdAt: Date.now(),
-        status: "available"
-      };
+      const driverRef = db.ref("drivers/" + plate);
+      await driverRef.set({ driverName: name, ambulancePlate: plate, hospital });
 
-      // Store under /ambulances/{hospital}/{autoId}
-      const ref = db.ref("ambulances/" + hospital).push();
-      await ref.set(ambulanceData);
-
-      successMsg.innerText = " Ambulance registered successfully!";
-      form.reset();
-      setTimeout(() => successMsg.innerText = "", 3000);
-    });
+      localStorage.setItem("driverPlate", plate); // Save login locally
+      document.getElementById("status").innerText = "✅ Registered successfully!";
+      setTimeout(() => { window.location.href = "ambulance_tracking.html"; }, 1500);
+    };
   </script>
 </body>
 </html>
