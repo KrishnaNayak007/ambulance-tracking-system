@@ -164,11 +164,11 @@
 
       // Clear request function (manual)
       window.clearRequest = function(requestId) {
-        if (confirm("Are you sure you want to remove this request?")) {
-          remove(ref(db, "requests/" + requestId))
-            .then(() => alert("✅ Request cleared by police"))
-            .catch(err => console.error(err));
-        }
+        // if (confirm("Are you sure you want to remove this request?")) {
+           remove(ref(db, "requests/" + requestId))
+        //     .then(() => alert("✅ Request cleared by police"))
+        //     .catch(err => console.error(err));
+        // }
       }
 
       // Listen to requests
