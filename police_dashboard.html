@@ -98,7 +98,8 @@
       const firebaseConfig = {
         apiKey: "AIzaSyCVOmAoo9h2-VJ6I7OCK2Naj2fYQq_Io1s",
         authDomain: "ambulance-tracking-syste-21793.firebaseapp.com",
-        databaseURL:"https://ambulance-tracking-syste-21793-default-rtdb.asia-southeast1.firebasedatabase.app/",
+        databaseURL:
+          "https://ambulance-tracking-syste-21793-default-rtdb.asia-southeast1.firebasedatabase.app/",
         projectId: "ambulance-tracking-syste-21793",
         storageBucket: "ambulance-tracking-syste-21793.appspot.com",
         messagingSenderId: "1057546446784",
@@ -108,27 +109,43 @@
       firebase.initializeApp(firebaseConfig);
       const db = firebase.database();
 
-      // Map Init
-      const map = L.map("map").setView([20.59, 78.96], 5); // India
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(
-        map
-      );
+      // Initialize map centered on India
+      const map = L.map("map").setView([20.59, 78.96], 5);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution:
+          '&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors',
+      }).addTo(map);
 
       const ambulanceMarkers = {};
       const hospitalCircles = {};
+      const requestsTableBody = document.querySelector("#requestsTable tbody");
+      const alertsDiv = document.getElementById("alerts");
 
+      // Clear and add request row to table
       function addRequestToTable(req, id) {
-        const tbody = document.querySelector("#requestsTable tbody");
+        // Check if row for this request already exists to avoid duplicates
+        if (document.getElementById(`request-row-${id}`)) return;
+
         const row = document.createElement("tr");
+        row.id = `request-row-${id}`;
         row.innerHTML = `
-        <td>${req.patientName || "-"}</td>
-        <td>${req.hospitalId || "-"}</td>
-        <td>${req.priority}</td>
-        <td>${req.status}</td>
-      `;
-        tbody.appendChild(row);
+          <td>${req.patientName || "-"}</td>
+          <td>${req.hospitalId || "-"}</td>
+          <td>${req.priority || "-"}</td>
+          <td>${req.status || "-"}</td>
+        `;
+        requestsTableBody.appendChild(row);
       }
 
+      // Update request row status in table
+      function updateRequestStatus(id, status) {
+        const row = document.getElementById(`request-row-${id}`);
+        if (!row) return;
+        // Status is in 4th cell (index 3)
+        row.cells[3].textContent = status || "-";
+      }
+
+      // Calculate distance between two lat/lng points in km
       function getDistanceKm(lat1, lon1, lat2, lon2) {
         const R = 6371;
         const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -141,7 +158,7 @@
         return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
       }
 
-      // Listen to Requests
+      // Listen for new ambulance requests
       db.ref("requests").on("child_added", (snapshot) => {
         const req = snapshot.val();
         const id = snapshot.key;
@@ -149,20 +166,27 @@
         addRequestToTable(req, id);
 
         if (req.pickup?.lat && req.pickup?.lng) {
-          const hospitalCircle = L.circle([req.pickup.lat, req.pickup.lng], {
-            radius: 2000, // 2 km
-            color: "blue",
-            fillOpacity: 0.1,
-          }).addTo(map);
-          hospitalCircles[id] = hospitalCircle;
+          if (hospitalCircles[id]) {
+            hospitalCircles[id].setLatLng([req.pickup.lat, req.pickup.lng]);
+          } else {
+            hospitalCircles[id] = L.circle([req.pickup.lat, req.pickup.lng], {
+              radius: 2000, // 2 km radius
+              color: "blue",
+              fillOpacity: 0.1,
+            }).addTo(map);
+          }
         }
       });
 
-      // Listen for ambulance updates
+      // Listen for updates to ambulance requests
       db.ref("requests").on("child_changed", (snapshot) => {
         const req = snapshot.val();
         const id = snapshot.key;
 
+        // Update status in table
+        updateRequestStatus(id, req.status);
+
+        // Update ambulance marker position
         if (req.ambulanceLat && req.ambulanceLng) {
           if (!ambulanceMarkers[id]) {
             ambulanceMarkers[id] = L.marker(
@@ -176,13 +200,10 @@
               }
             ).addTo(map);
           } else {
-            ambulanceMarkers[id].setLatLng([
-              req.ambulanceLat,
-              req.ambulanceLng,
-            ]);
+            ambulanceMarkers[id].setLatLng([req.ambulanceLat, req.ambulanceLng]);
           }
 
-          // Check distance
+          // Check distance between ambulance and pickup location
           if (req.pickup?.lat && req.pickup?.lng) {
             const dist = getDistanceKm(
               req.pickup.lat,
@@ -191,9 +212,17 @@
               req.ambulanceLng
             );
             if (dist <= 2) {
-              document.getElementById("alerts").innerHTML = `
-              <div class="alert">🚨 Ambulance near ${req.hospitalId} (within 2 km)</div>
-            `;
+              alertsDiv.innerHTML = `
+                <div class="alert">🚨 Ambulance near ${req.hospitalId} (within 2 km)</div>
+              `;
+            } else {
+              // Clear alert if ambulance moves away
+              if (
+                alertsDiv.firstChild &&
+                alertsDiv.firstChild.textContent.includes(req.hospitalId)
+              ) {
+                alertsDiv.innerHTML = "";
+              }
             }
           }
         }

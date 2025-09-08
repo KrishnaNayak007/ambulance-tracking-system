@@ -2,12 +2,17 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>Hospital — Order Ambulance</title>
+    <title>Hospital — Request Ambulance</title>
     <meta name="viewport" content="width=device-width,initial-scale=1" />
 
-    <!-- Leaflet for Map -->
+    <!-- Leaflet -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="hospitals.js"></script>
+
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
     <style>
       body {
@@ -40,18 +45,16 @@
         margin-top: 20px;
       }
     </style>
-
-    <!-- Firebase -->
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
   </head>
   <body>
     <h1>Hospital — Request Ambulance</h1>
-
     <div class="card">
-      <input id="hospitalId" value="hospital_01" placeholder="Hospital ID" />
+      <input id="hospitalId"  placeholder="Hospital Name" />
+      <ul
+        id="hospitalSuggestions"
+        style="max-width: 480px; list-style: none; padding: 0; margin: 0"
+      ></ul>
       <input id="patientName" placeholder="Patient Name" />
-
       <input
         type="text"
         id="pickupSearch"
@@ -76,13 +79,9 @@
       <button id="requestBtn">Request Ambulance</button>
       <div id="statusArea" class="small">No requests yet.</div>
     </div>
-
     <div id="map"></div>
 
     <script>
-      const statusArea = document.getElementById("statusArea");
-
-      // Firebase config
       const firebaseConfig = {
         apiKey: "AIzaSyCVOmAoo9h2-VJ6I7OCK2Naj2fYQq_Io1s",
         authDomain: "ambulance-tracking-syste-21793.firebaseapp.com",
@@ -92,213 +91,172 @@
         storageBucket: "ambulance-tracking-syste-21793.appspot.com",
         messagingSenderId: "1057546446784",
         appId: "1:1057546446784:web:549e7f233fdd29786fca25",
-        measurementId: "G-0PM28YF030",
       };
       firebase.initializeApp(firebaseConfig);
       const db = firebase.database();
 
-      // Leaflet map
-      var map = L.map("map").setView([20.5937, 78.9629], 5); // India default
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution:
-          '&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a>',
-      }).addTo(map);
-
+      const hospitalIdInput = document.getElementById("hospitalId");
+      const patientNameInput = document.getElementById("patientName");
+      const pickupSearchInput = document.getElementById("pickupSearch");
+      const statusArea = document.getElementById("statusArea");
       let selectedCoords = null;
 
-      const pickupSearch = document.getElementById("pickupSearch");
-      const suggestions = document.getElementById("suggestions");
+      // --- Map ---
+      const map = L.map("map").setView([20.5937, 78.9629], 5);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "&copy; OpenStreetMap contributors",
+      }).addTo(map);
+      let pickupMarker = null;
+      let ambulanceMarker = null;
 
-      pickupSearch.addEventListener("input", async function () {
-        const query = pickupSearch.value.trim();
+      function updateMap(lat, lng, text, markerRef) {
+        if (markerRef) map.removeLayer(markerRef);
+        map.setView([lat, lng], 15);
+        return L.marker([lat, lng]).addTo(map).bindPopup(text).openPopup();
+      }
+
+      // --- Search Suggestions ---
+      const suggestionsList = document.getElementById("suggestions");
+      pickupSearchInput.addEventListener("input", async function () {
+        const query = pickupSearchInput.value.trim();
         if (query.length < 3) {
-          suggestions.innerHTML = "";
+          suggestionsList.innerHTML = "";
           return;
         }
         const resp = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&addressdetails=1&limit=5`
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+            query
+          )}&limit=5`
         );
         const data = await resp.json();
-        suggestions.innerHTML = "";
-        data.features.forEach((feature) => {
+        suggestionsList.innerHTML = "";
+        data.forEach((place) => {
           const li = document.createElement("li");
-          li.textContent =
-            feature.properties.name +
-            ", " +
-            (feature.properties.city || "") +
-            ", " +
-            (feature.properties.country || "");
+          li.textContent = place.display_name;
           li.style.cursor = "pointer";
           li.onclick = () => {
-            pickupSearch.value = li.textContent;
-            selectedCoords = feature.geometry.coordinates; // [lng, lat]
-            map.setView([selectedCoords[1], selectedCoords[0]], 15);
-            if (window.manualMarker) map.removeLayer(window.manualMarker);
-            window.manualMarker = L.marker([
-              selectedCoords[1],
+            pickupSearchInput.value = place.display_name;
+            selectedCoords = [parseFloat(place.lat), parseFloat(place.lon)];
+            pickupMarker = updateMap(
               selectedCoords[0],
-            ])
-              .addTo(map)
-              .bindPopup("Selected Location")
-              .openPopup();
-            suggestions.innerHTML = "";
+              selectedCoords[1],
+              "Pickup Location",
+              pickupMarker
+            );
+            suggestionsList.innerHTML = "";
           };
-          suggestions.appendChild(li);
+          suggestionsList.appendChild(li);
         });
       });
 
-      //Use My Location
       document.getElementById("useMyLocation").onclick = () => {
-        navigator.geolocation.getCurrentPosition(async (pos) => {
-          selectedCoords = [pos.coords.longitude, pos.coords.latitude];
-          // Fetch address using Photon reverse geocoding
-          const resp = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${selectedCoords[1]}&lon=${selectedCoords[0]}&addressdetails=1`
+        navigator.geolocation.getCurrentPosition((pos) => {
+          selectedCoords = [pos.coords.latitude, pos.coords.longitude];
+          pickupSearchInput.value = "Your Current Location";
+          pickupMarker = updateMap(
+            selectedCoords[0],
+            selectedCoords[1],
+            "Pickup Location",
+            pickupMarker
           );
-          const data = await resp.json();
-          if (data && data.address) {
-            // Build address manually
-            const addr = [
-              data.address.road || "",
-              data.address.city ||
-                data.address.town ||
-                data.address.village ||
-                "",
-              data.address.state || "",
-              "India", // Force "India"
-            ]
-              .filter(Boolean)
-              .join(", ");
-
-            pickupSearch.value = addr;
-          } else {
-            pickupSearch.value = "Unknown Location, India";
-          }
-
-          map.setView([pos.coords.latitude, pos.coords.longitude], 15);
-
-          if (window.manualMarker) map.removeLayer(window.manualMarker);
-          window.manualMarker = L.marker([
-            pos.coords.latitude,
-            pos.coords.longitude,
-          ])
-            .addTo(map)
-            .bindPopup("Your Location")
-            .openPopup();
         });
       };
-
-      //Use Typed Location (from search box)
       document.getElementById("useTypedLocation").onclick = () => {
         if (!selectedCoords) {
-          alert("Please search for a location first!");
+          alert("Select a location first!");
           return;
         }
-        statusArea.innerText =
-          "Using manually selected location: " + pickupSearch.value;
+        alert("Location confirmed: " + pickupSearchInput.value);
       };
 
-      //Request Ambulance
+      // --- Request Ambulance ---
       document.getElementById("requestBtn").onclick = async () => {
-        if (!selectedCoords || selectedCoords.length < 2) {
-          alert("Please select a location first!");
+        if (!selectedCoords) {
+          alert("Select a location first!");
           return;
         }
-
-        const hospitalId = document.getElementById("hospitalId").value;
-        const patientName = document.getElementById("patientName").value;
+        const hospitalId = hospitalIdInput.value.trim();
+        const patientName = patientNameInput.value.trim();
         if (!hospitalId || !patientName) {
-          alert("Please enter patient name and hospital ID.");
+          alert("Enter hospital ID and patient name!");
           return;
         }
 
-        const req = {
-          hospitalId: document.getElementById("hospitalId").value,
-          patientName: document.getElementById("patientName").value,
-          pickup: {
-            lat: selectedCoords[1],
-            lng: selectedCoords[0],
-          },
-          address: pickupSearch.value,
+        const reqRef = db.ref("requests").push();
+        const requestData = {
+          hospitalId,
+          patientName,
+          pickup: { lat: selectedCoords[0], lng: selectedCoords[1] },
+          address: pickupSearchInput.value,
           priority: document.getElementById("priority").value,
-          notes: document.getElementById("notes").value,
-          createdAt: Date.now(),
+          notes: document.getElementById("notes").value.trim(),
+          createdAt: firebase.database.ServerValue.TIMESTAMP,
           status: "requested",
           ambulanceId: null,
+          ambulancePlate: null,
+          ambulanceDriver: null,
         };
+        await reqRef.set(requestData);
+        statusArea.innerText = `Request created (ID: ${reqRef.key}). Waiting for ambulance...`;
 
-        console.log("Request being sent:", req);
-
-        const ref = db.ref("requests").push();
-        await ref.set(req);
-        statusArea.innerText = `Request created (id: ${ref.key}). Waiting for assignment...`;
-
-        const requestRef = db.ref("requests/" + ref.key);
-        requestRef.on("value", (snapshot) => {
-          const req = snapshot.val();
-          if (req && req.status === "Accepted") {
-            // Show distance if ambulance location is available
-            if (req.ambulanceLat && req.ambulanceLng) {
-              const distance = getDistanceFromLatLonInKm(
-                req.pickup.lat,
-                req.pickup.lng,
-                req.ambulanceLat,
-                req.ambulanceLng
-              );
-              alert(
-                `🚑 Your ambulance request has been accepted!\nDistance to ambulance: ${distance.toFixed(
-                  2
-                )} km`
-              );
-            } else {
-              alert("🚑 Your ambulance request has been accepted!");
-            }
-          }
-        });
-        requestRef.on("value", (snapshot) => {
-          const req = snapshot.val();
-          if (!req) return;
-
-          if (req.ambulanceLat && req.ambulanceLng) {
-            if (!ambulanceMarker) {
-              ambulanceMarker = L.marker([req.ambulanceLat, req.ambulanceLng], {
-                icon: L.divIcon({
-                  className: "",
-                  html: "🚑",
-                  iconSize: [24, 24],
-                }),
-              }).addTo(map);
-            } else {
-              ambulanceMarker.setLatLng([req.ambulanceLat, req.ambulanceLng]);
-            }
+        // Listen for acceptance
+        reqRef.on("value", (snapshot) => {
+          const updated = snapshot.val();
+          if (!updated) return;
+          if (updated.status === "Accepted") {
+            alert(
+              `🚑 Ambulance Accepted!\nPlate: ${updated.ambulancePlate}\nDriver: ${updated.ambulanceDriver}`
+            );
+            statusArea.innerText = `Ambulance assigned: ${updated.ambulancePlate}`;
+            // Add ambulance marker
+            ambulanceMarker = updateMap(
+              updated.ambulanceLat,
+              updated.ambulanceLng,
+              `Ambulance: ${updated.ambulancePlate}`,
+              ambulanceMarker
+            );
+            reqRef.off();
           }
         });
       };
 
-      function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
-        const R = 6371; // Radius of the earth in km
-        const dLat = ((lat2 - lat1) * Math.PI) / 180;
-        const dLon = ((lon2 - lon1) * Math.PI) / 180;
-        const a =
-          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-          Math.cos((lat1 * Math.PI) / 180) *
-            Math.cos((lat2 * Math.PI) / 180) *
-            Math.sin(dLon / 2) *
-            Math.sin(dLon / 2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        const d = R * c; // Distance in km
-        return d;
-      }
+      const hospitalInput = document.getElementById("hospitalId");
+      const hospitalSuggestions = document.getElementById(
+        "hospitalSuggestions"
+      );
 
-      let ambulanceMarker = null;
+      hospitalInput.addEventListener("input", () => {
+        const query = hospitalInput.value.toLowerCase().trim();
+        hospitalSuggestions.innerHTML = "";
 
-      window.onload = function () {
-        if (navigator.geolocation) {
-          navigator.geolocation.getCurrentPosition((pos) => {
-            map.setView([pos.coords.latitude, pos.coords.longitude], 13);
-          });
+        if (!query) return;
+
+        const matches = odishaHospitals.filter((h) =>
+          h.toLowerCase().includes(query)
+        );
+
+        if (matches.length === 0) {
+          const li = document.createElement("li");
+          li.textContent = "No hospitals found";
+          hospitalSuggestions.appendChild(li);
+          return;
         }
-      };
+
+        matches.forEach((hospital) => {
+          const li = document.createElement("li");
+          li.textContent = hospital;
+          li.style.cursor = "pointer";
+          li.style.padding = "5px";
+          li.style.borderBottom = "1px solid #eee";
+
+          li.addEventListener("click", () => {
+            hospitalInput.value = hospital;
+            hospitalSuggestions.innerHTML = "";
+          });
+
+          hospitalSuggestions.appendChild(li);
+        });
+      });
     </script>
   </body>
 </html>
