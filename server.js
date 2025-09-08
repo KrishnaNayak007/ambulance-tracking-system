@@ -1,7 +1,10 @@
 import express from "express";
 import cors from "cors";
+require("dotenv").config();
 
 const app = express();
+
+const nominatimUrl = process.env.NOMINATIM_API_URL;
 
 //Allow all origins (for development)
 app.use(cors());
@@ -10,7 +13,7 @@ app.get("/reverse-geocode", async (req, res) => {
   const { lat, lon } = req.query;
   try {
     const resp = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`
+      `https://${nominatimUrl}/reverse?format=json&lat=${lat}&lon=${lon}`
     );
     const data = await resp.json();
     res.json(data);
