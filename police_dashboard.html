@@ -216,7 +216,7 @@
           }
 
           // If ambulance is active
-          if (req.ambulanceLat && req.ambulanceLng) {
+          if (req.ambulanceLat && req.ambulanceLng && req.pickup?.lat && req.pickup?.lng) {
             const dist = getDistanceKm(
               req.pickup.lat,
               req.pickup.lng,
