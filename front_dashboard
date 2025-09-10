@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>Smart Traffic Clearance — Home</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="home">
+  <div class="center-card">
+  <div class="heading-box">
+    <h1>🚦 Smart Ambulance Tracking & Traffic Clearance System</h1>
+  </div>
+  <img src="https://static.vecteezy.com/system/resources/previews/004/714/980/non_2x/ambulance-emergency-car-runs-a-red-traffic-light-on-the-road-in-the-city-medical-concept-flat-design-illustration-vector.jpg" width="500" alt="Ambulance traffic jam scene">
+  
+  <div class="role-buttons">
+    <a class="btn" href="hospital.html">🏥 Hospital</a>
+    <a class="btn" href="ambulance.html">🚑 Ambulance (Driver)</a>
+    <a class="btn" href="dashboard.html">👮 Traffic Dashboard</a>
+  </div>
+</div>
+</body>
+</html>
