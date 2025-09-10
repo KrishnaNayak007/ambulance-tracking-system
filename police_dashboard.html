@@ -6,13 +6,11 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
 
     <!-- Leaflet -->
-    <link
-      rel="stylesheet"
-      href="https://unpkg.com/leaflet/dist/leaflet.css"/>
-    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
-   <style>
+    <style>
       body {
         font-family: Arial, sans-serif;
         margin: 0;
@@ -20,7 +18,7 @@
         background: #f5f5f5;
       }
       header {
-        background:linear-gradient(90deg, #0ea5a3, #06b6d4);
+        background: linear-gradient(90deg, #0ea5a3, #06b6d4);
         color: white;
         padding: 12px 20px;
         font-size: 20px;
@@ -38,7 +36,7 @@
       }
       .sidebar {
         flex: 1;
-        background:#e0f7fa;
+        background: #e0f7fa;
         padding: 15px;
         border-radius: 6px;
         border: 1px solid #ddd;
@@ -96,34 +94,40 @@
 
     <script type="module">
       import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-      import { getDatabase, ref, onValue, remove } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+      import {
+        getDatabase,
+        ref,
+        onValue,
+        remove,
+      } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
-      // 🔹 Firebase config
+      // Firebase config
       const firebaseConfig = {
         apiKey: "AIzaSyCVOmAoo9h2-VJ6I7OCK2Naj2fYQq_Io1s",
         authDomain: "ambulance-tracking-syste-21793.firebaseapp.com",
-        databaseURL: "https://ambulance-tracking-syste-21793-default-rtdb.asia-southeast1.firebasedatabase.app/",
+        databaseURL:
+          "https://ambulance-tracking-syste-21793-default-rtdb.asia-southeast1.firebasedatabase.app/",
         projectId: "ambulance-tracking-syste-21793",
         storageBucket: "ambulance-tracking-syste-21793.appspot.com",
         messagingSenderId: "1057546446784",
         appId: "1:1057546446784:web:549e7f233fdd29786fca25",
       };
-
       const app = initializeApp(firebaseConfig);
       const db = getDatabase(app);
 
-      // Map setup
       const map = L.map("map").setView([20.59, 78.96], 5);
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors',
+        attribution:
+          '&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors',
       }).addTo(map);
 
       const ambulanceMarkers = {};
       const hospitalCircles = {};
+      const routeLines = {}; // 🔹 store active routes
       const requestsTableBody = document.querySelector("#requestsTable tbody");
       const alertsDiv = document.getElementById("alerts");
 
-      // Helper: Distance in km
+      // Distance helper
       function getDistanceKm(lat1, lon1, lat2, lon2) {
         const R = 6371;
         const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -131,9 +135,45 @@
         const a =
           Math.sin(dLat / 2) ** 2 +
           Math.cos((lat1 * Math.PI) / 180) *
-          Math.cos((lat2 * Math.PI) / 180) *
-          Math.sin(dLon / 2) ** 2;
+            Math.cos((lat2 * Math.PI) / 180) *
+            Math.sin(dLon / 2) ** 2;
         return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      }
+
+      // Draw route using OSRM
+      async function drawRoute(id, ambLat, ambLng, hospLat, hospLng) {
+        const url = `https://router.project-osrm.org/route/v1/driving/${ambLng},${ambLat};${hospLng},${hospLat}?overview=full&geometries=geojson`;
+        const resp = await fetch(url);
+        const data = await resp.json();
+        if (!data.routes || !data.routes.length) return;
+
+        const coords = data.routes[0].geometry.coordinates.map((c) => [
+          c[1],
+          c[0],
+        ]);
+        if (routeLines[id]) map.removeLayer(routeLines[id]);
+        routeLines[id] = L.polyline(coords, { color: "blue", weight: 4 }).addTo(
+          map
+        );
+      }
+
+      // Clear visuals if ambulance goes away
+      function clearAmbulanceFromMap(id) {
+        if (ambulanceMarkers[id]) {
+          map.removeLayer(ambulanceMarkers[id]);
+          delete ambulanceMarkers[id];
+        }
+        if (hospitalCircles[id]) {
+          map.removeLayer(hospitalCircles[id]);
+          delete hospitalCircles[id];
+        }
+        if (routeLines[id]) {
+          map.removeLayer(routeLines[id]);
+          delete routeLines[id];
+        }
+        const row = document.getElementById(`request-row-${id}`);
+        if (row) row.remove();
+        alertsDiv.innerHTML = "";
       }
 
       // Add request row
@@ -142,85 +182,98 @@
         const row = document.createElement("tr");
         row.id = `request-row-${id}`;
         row.innerHTML = `
-          <td>${req.patientName || "-"}</td>
-          <td>${req.hospitalId || "-"}</td>
-          <td>${req.plate || "-"}</td>
-          <td>${req.priority || "-"}</td>
-          <td>${req.status || "-"}</td>
-          <td><button onclick="clearRequest('${id}')">❌ Clear</button></td>
-        `;
+      <td>${req.patientName || "-"}</td>
+      <td>${req.hospitalId || "-"}</td>
+      <td>${req.ambulancePlate || "-"}</td>
+      <td>${req.priority || "-"}</td>
+      <td>${req.status || "-"}</td>
+      <td><button onclick="clearRequest('${id}')">❌ Clear</button></td>
+    `;
         requestsTableBody.appendChild(row);
       }
 
-      // Update request row
-      function updateRequestRow(id, req) {
-        const row = document.getElementById(`request-row-${id}`);
-        if (!row) return;
-        row.cells[1].textContent = req.hospitalId || "-";
-        row.cells[2].textContent = req.plate || "-";
-        row.cells[3].textContent = req.priority || "-";
-        row.cells[4].textContent = req.status || "-";
-      }
+      // Manual clear
+      window.clearRequest = function (requestId) {
+        remove(ref(db, "requests/" + requestId));
+        clearAmbulanceFromMap(requestId);
+      };
 
-      // Clear request function (manual)
-      window.clearRequest = function(requestId) {
-        // if (confirm("Are you sure you want to remove this request?")) {
-           remove(ref(db, "requests/" + requestId))
-        //     .then(() => alert("✅ Request cleared by police"))
-        //     .catch(err => console.error(err));
-        // }
-      }
-
-      // Listen to requests
+      // 🔹 Listen to requests
       const requestsRef = ref(db, "requests");
-      onValue(requestsRef, snapshot => {
+      onValue(requestsRef, (snapshot) => {
         requestsTableBody.innerHTML = "";
-        snapshot.forEach(childSnapshot => {
-          const req = childSnapshot.val();
-          const id = childSnapshot.key;
-          addRequestToTable(req, id);
+        snapshot.forEach((child) => {
+          const req = child.val();
+          const id = child.key;
 
-          // Add hospital circle
-          if (req.pickup?.lat && req.pickup?.lng) {
-            if (!hospitalCircles[id]) {
-              hospitalCircles[id] = L.circle([req.pickup.lat, req.pickup.lng], {
-                radius: 2000,
-                color: "blue",
-                fillOpacity: 0.1
-              }).addTo(map);
-            }
+          // Ensure hospital circle
+          if (req.pickup?.lat && req.pickup?.lng && !hospitalCircles[id]) {
+            hospitalCircles[id] = L.circle([req.pickup.lat, req.pickup.lng], {
+              radius: 2000,
+              color: "blue",
+              fillOpacity: 0.1,
+            }).addTo(map);
           }
 
-          // Ambulance marker
+          // If ambulance is active
           if (req.ambulanceLat && req.ambulanceLng) {
-            if (!ambulanceMarkers[id]) {
-              ambulanceMarkers[id] = L.marker([req.ambulanceLat, req.ambulanceLng], {
-                icon: L.divIcon({ html: "🚑", className: "", iconSize: [24,24] })
-              }).addTo(map)
-                .bindPopup(`<b>🚑 Ambulance</b><br>
-                  Plate: ${req.plate || "-"}<br>
-                  Hospital: ${req.hospitalId || "-"}<br>
-                  Status: ${req.status || "-"}`);
-            } else {
-              ambulanceMarkers[id].setLatLng([req.ambulanceLat, req.ambulanceLng]);
-              ambulanceMarkers[id].setPopupContent(`<b>🚑 Ambulance</b><br>
-                Plate: ${req.plate || "-"}<br>
-                Hospital: ${req.hospitalId || "-"}<br>
-                Status: ${req.status || "-"}`);
-            }
+            const dist = getDistanceKm(
+              req.pickup.lat,
+              req.pickup.lng,
+              req.ambulanceLat,
+              req.ambulanceLng
+            );
 
-            // Distance alert
-            if (req.pickup?.lat && req.pickup?.lng) {
-              const dist = getDistanceKm(req.pickup.lat, req.pickup.lng, req.ambulanceLat, req.ambulanceLng);
-              if (dist <= 2) {
-                alertsDiv.innerHTML = `<div class="alert">🚨 Ambulance ${req.plate || ""} near ${req.hospitalId} (within 2 km)</div>`;
+            if (dist <= 2) {
+              addRequestToTable(req, id);
+
+              // Marker update
+              if (!ambulanceMarkers[id]) {
+                ambulanceMarkers[id] = L.marker(
+                  [req.ambulanceLat, req.ambulanceLng],
+                  {
+                    icon: L.icon({
+                      iconUrl:
+                        "https://cdn-icons-png.flaticon.com/512/3181/3181919.png",
+                      iconSize: [32, 32],
+                      iconAnchor: [16, 16],
+                    }),
+                  }
+                ).addTo(map).bindPopup(`🚑 Plate: ${
+                  req.ambulancePlate || "-"
+                }<br>
+                          Hospital: ${req.hospitalId || "-"}<br>
+                          Status: ${req.status || "-"}`);
               } else {
-                alertsDiv.innerHTML = "";
+                ambulanceMarkers[id].setLatLng([
+                  req.ambulanceLat,
+                  req.ambulanceLng,
+                ]);
               }
+
+              // Route drawing
+              drawRoute(
+                id,
+                req.ambulanceLat,
+                req.ambulanceLng,
+                req.pickup.lat,
+                req.pickup.lng
+              );
+
+              alertsDiv.innerHTML = `<div class="alert">🚨 Ambulance ${
+                req.ambulancePlate || ""
+              } near ${req.hospitalId} (within 2 km)</div>`;
+            } else {
+              // 🚫 Remove if out of 2km
+              clearAmbulanceFromMap(id);
             }
+          } else {
+            clearAmbulanceFromMap(id);
           }
         });
       });
     </script>
-  </body>
+
+     
+  </body>
 </html>
