@@ -5,6 +5,11 @@
     <title>🚑 Ambulance Tracking</title>
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css"
+    />
+
     <style>
       body {
         font-family: system-ui;
@@ -102,6 +107,17 @@
       const app = initializeApp(firebaseConfig);
       const db = getDatabase(app);
 
+      let routeLine = null;
+      // 🚑 Driver Ambulance Icon
+      const driverIcon = L.icon({
+        iconUrl: "https://cdn-icons-png.flaticon.com/512/2967/2967350.png",
+        iconSize: [40, 40],
+        iconAnchor: [20, 20],
+        popupAnchor: [0, -20],
+      });
+
+      let driverMarker = null;
+
       // Map setup
       const map = L.map("map").setView([20.2961, 85.8245], 12); // default Bhubaneswar
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -168,8 +184,61 @@
                 ambulanceDriver: driverName,
               });
 
-              drawDrivingRoute(req.ambulanceLat, req.ambulanceLng, req.pickup.lat, req.pickup.lng);
+              navigator.geolocation.getCurrentPosition((pos) => {
+                const ambLat = pos.coords.latitude;
+                const ambLng = pos.coords.longitude;
 
+                update(ref(db, "requests/" + requestId), {
+                  ambulanceLat: ambLat,
+                  ambulanceLng: ambLng,
+                });
+
+                if (driverMarker) map.removeLayer(driverMarker);
+                driverMarker = L.marker([ambLat, ambLng], { icon: driverIcon })
+                  .addTo(map)
+                  .bindPopup("🚑 You are here")
+                  .openPopup();
+
+                // Show ambulance marker on the map
+                if (!window.ambulanceMarker) {
+                  window.ambulanceMarker = L.marker([ambLat, ambLng], {
+                    icon: L.icon({
+                      iconUrl:
+                        "https://cdn-icons-png.flaticon.com/512/3181/3181919.png",
+                      iconSize: [40, 40],
+                    }),
+                  })
+                    .addTo(map)
+                    .bindPopup("🚑 Ambulance Location");
+                } else {
+                  window.ambulanceMarker.setLatLng([ambLat, ambLng]);
+                }
+
+                drawDrivingRoute(
+                  ambLat,
+                  ambLng,
+                  req.pickup.lat,
+                  req.pickup.lng
+                );
+              });
+
+              // Keep updating as driver moves
+              navigator.geolocation.watchPosition((pos) => {
+                const ambLat = pos.coords.latitude;
+                const ambLng = pos.coords.longitude;
+
+                update(ref(db, "requests/" + activeRequestId), {
+                  ambulanceLat: ambLat,
+                  ambulanceLng: ambLng,
+                });
+
+                drawDrivingRoute(
+                  ambLat,
+                  ambLng,
+                  req.pickup.lat,
+                  req.pickup.lng
+                );
+              });
 
               // Show pickup on map
               if (req.pickup?.lat && req.pickup?.lng) {
