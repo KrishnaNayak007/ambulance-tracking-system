@@ -83,7 +83,6 @@
       let ambulanceMarker = null;
       let selectedHospital = null;
 
-
       // 🚑 Custom Ambulance Icon
       const ambulanceIcon = L.icon({
         iconUrl: "https://cdn-icons-png.flaticon.com/512/3181/3181919.png", // Ambulance icon
@@ -212,7 +211,7 @@
         if (!query) return;
 
         const matches = odishaHospitals.filter((h) =>
-          h.name.toLowerCase().includes(query)
+          (h.name || "").toLowerCase().includes(query)
         );
         if (matches.length === 0) {
           const li = document.createElement("li");
@@ -246,6 +245,10 @@
           return;
         }
 
+        if (!selectedHospital) {
+          selectedHospital = { name: hospitalId, lat: null, lng: null };
+        }
+
         const requestRef = push(ref(db, "requests"));
         const requestData = {
           hospitalId: selectedHospital.name,
@@ -261,11 +264,11 @@
           ambulanceDriver: null,
           ambulanceLat: null,
           ambulanceLng: null,
-          hospitalLat: selectedHospital.lat, 
+          hospitalLat: selectedHospital.lat,
           hospitalLng: selectedHospital.lng,
 
           hospitalLat: selectedHospital?.lat || null,
-    hospitalLng: selectedHospital?.lng || null,
+          hospitalLng: selectedHospital?.lng || null,
         };
 
         await set(requestRef, requestData);
