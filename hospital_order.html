@@ -81,6 +81,8 @@
       let selectedCoords = null;
       let pickupMarker = null;
       let ambulanceMarker = null;
+      let selectedHospital = null;
+
 
       // 🚑 Custom Ambulance Icon
       const ambulanceIcon = L.icon({
@@ -210,7 +212,7 @@
         if (!query) return;
 
         const matches = odishaHospitals.filter((h) =>
-          h.toLowerCase().includes(query)
+          h.name.toLowerCase().includes(query)
         );
         if (matches.length === 0) {
           const li = document.createElement("li");
@@ -221,10 +223,11 @@
 
         matches.forEach((hospital) => {
           const li = document.createElement("li");
-          li.textContent = hospital;
+          li.textContent = hospital.name;
           li.onclick = () => {
-            hospitalInput.value = hospital;
+            hospitalInput.value = hospital.name;
             hospitalSuggestions.innerHTML = "";
+            selectedHospital = hospital;
           };
           hospitalSuggestions.appendChild(li);
         });
@@ -245,7 +248,7 @@
 
         const requestRef = push(ref(db, "requests"));
         const requestData = {
-          hospitalId,
+          hospitalId: selectedHospital.name,
           patientName,
           pickup: { lat: selectedCoords[0], lng: selectedCoords[1] },
           address: pickupSearchInput.value,
@@ -258,6 +261,11 @@
           ambulanceDriver: null,
           ambulanceLat: null,
           ambulanceLng: null,
+          hospitalLat: selectedHospital.lat, 
+          hospitalLng: selectedHospital.lng,
+
+          hospitalLat: selectedHospital?.lat || null,
+    hospitalLng: selectedHospital?.lng || null,
         };
 
         await set(requestRef, requestData);
@@ -266,43 +274,76 @@
 
         // Listen for updates (ambulance accepted)
         onValue(requestRef, (snapshot) => {
-  const updated = snapshot.val();
-  if (!updated) return;
+          const updated = snapshot.val();
+          if (!updated) return;
 
-  if (updated.status === "Accepted") {
-    statusArea.innerText = `🚑 Ambulance assigned: ${updated.ambulancePlate} (${updated.ambulanceDriver})`;
+          if (updated.status === "Accepted") {
+            statusArea.innerText = `🚑 Ambulance assigned: ${updated.ambulancePlate} (${updated.ambulanceDriver})`;
 
-    if (updated.ambulanceLat && updated.ambulanceLng) {
-      // 🚑 Update ambulance marker
-      if (ambulanceMarker) map.removeLayer(ambulanceMarker);
-      ambulanceMarker = L.marker(
-        [updated.ambulanceLat, updated.ambulanceLng],
-        { icon: ambulanceIcon }
-      )
-        .addTo(map)
-        .bindPopup(`🚑 Ambulance: ${updated.ambulancePlate}`)
-        .openPopup();
+            if (updated.ambulanceLat && updated.ambulanceLng) {
+              // 🚑 Update ambulance marker
+              if (ambulanceMarker) map.removeLayer(ambulanceMarker);
+              ambulanceMarker = L.marker(
+                [updated.ambulanceLat, updated.ambulanceLng],
+                { icon: ambulanceIcon }
+              )
+                .addTo(map)
+                .bindPopup(`🚑 Ambulance: ${updated.ambulancePlate}`)
+                .openPopup();
 
-      // 🛣 Draw live route ambulance → pickup
-      if (updated.pickup?.lat && updated.pickup?.lng) {
-        drawDrivingRoute(
-          updated.ambulanceLat,
-          updated.ambulanceLng,
-          updated.pickup.lat,
-          updated.pickup.lng
-        );
+              // 🛣 Draw live route ambulance → pickup
+              if (updated.pickup?.lat && updated.pickup?.lng) {
+                drawDrivingRoute(
+                  updated.ambulanceLat,
+                  updated.ambulanceLng,
+                  updated.pickup.lat,
+                  updated.pickup.lng
+                );
 
-        // 🎯 Fit map to both ambulance & pickup like Ola/Uber
-        const bounds = L.latLngBounds([
-          [updated.ambulanceLat, updated.ambulanceLng],
-          [updated.pickup.lat, updated.pickup.lng],
-        ]);
-        map.fitBounds(bounds, { padding: [50, 50] });
-      }
-    }
-  }
-});
+                // 🎯 Fit map to both ambulance & pickup like Ola/Uber
+                const bounds = L.latLngBounds([
+                  [updated.ambulanceLat, updated.ambulanceLng],
+                  [updated.pickup.lat, updated.pickup.lng],
+                ]);
+                map.fitBounds(bounds, { padding: [50, 50] });
+              }
+            }
+          } else if (updated.status === "PickedUp") {
+            statusArea.innerText =
+              "🚑 Patient picked up, heading to hospital...";
 
+            if (
+              updated.ambulanceLat &&
+              updated.ambulanceLng &&
+              updated.hospitalLat &&
+              updated.hospitalLng
+            ) {
+              if (ambulanceMarker) map.removeLayer(ambulanceMarker);
+              ambulanceMarker = L.marker(
+                [updated.ambulanceLat, updated.ambulanceLng],
+                { icon: ambulanceIcon }
+              )
+                .addTo(map)
+                .bindPopup(`🚑 Ambulance: ${updated.ambulancePlate}`)
+                .openPopup();
+
+              // 🛣 Draw live route ambulance → hospital
+              drawDrivingRoute(
+                updated.ambulanceLat,
+                updated.ambulanceLng,
+                updated.hospitalLat,
+                updated.hospitalLng
+              );
+
+              // 🎯 Fit map to ambulance & hospital
+              const bounds = L.latLngBounds([
+                [updated.ambulanceLat, updated.ambulanceLng],
+                [updated.hospitalLat, updated.hospitalLng],
+              ]);
+              map.fitBounds(bounds, { padding: [50, 50] });
+            }
+          }
+        });
       };
     </script>
   </body>
