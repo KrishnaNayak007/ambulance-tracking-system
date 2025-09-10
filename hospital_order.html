@@ -211,7 +211,7 @@
         if (!query) return;
 
         const matches = odishaHospitals.filter((h) =>
-          (h.name || "").toLowerCase().includes(query)
+          h.name.toLowerCase().includes(query)
         );
         if (matches.length === 0) {
           const li = document.createElement("li");
@@ -245,9 +245,9 @@
           return;
         }
 
-        if (!selectedHospital) {
-          selectedHospital = { name: hospitalId, lat: null, lng: null };
-        }
+        // if (!selectedHospital) {
+        //   selectedHospital = { name: hospitalId, lat: null, lng: null };
+        // }
 
         const requestRef = push(ref(db, "requests"));
         const requestData = {
