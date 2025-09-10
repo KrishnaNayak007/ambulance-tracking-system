@@ -82,6 +82,8 @@
       </div>
     </div>
 
+    <button id="pickupBtn" class="btn btn-primary">✅ Patient Picked Up</button>
+
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script type="module">
       import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
@@ -124,8 +126,8 @@
         attribution: "© OpenStreetMap contributors",
       }).addTo(map);
 
-      async function drawDrivingRoute(ambLat, ambLng, pickLat, pickLng) {
-        const url = `https://router.project-osrm.org/route/v1/driving/${ambLng},${ambLat};${pickLng},${pickLat}?overview=full&geometries=geojson`;
+      async function drawDrivingRoute(startLat, startLng, endLat, endLng) {
+        const url = `https://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${endLng},${endLat}?overview=full&geometries=geojson`;
 
         const resp = await fetch(url);
         const data = await resp.json();
@@ -177,6 +179,43 @@
             acceptBtn.onclick = () => {
               popup.style.display = "none";
               activeRequestId = requestId;
+
+              // 🔴 Start listening to updates of only this active request
+              onValue(ref(db, "requests/" + activeRequestId), (snap) => {
+                const currentReq = snap.val();
+                if (!currentReq) return;
+
+                // update ambulance marker
+                if (driverMarker) {
+                  driverMarker.setLatLng([
+                    currentReq.ambulanceLat,
+                    currentReq.ambulanceLng,
+                  ]);
+                }
+
+                // if patient picked up → hospital
+                if (
+                  currentReq.status === "PickedUp" &&
+                  currentReq.hospitalLat &&
+                  currentReq.hospitalLng
+                ) {
+                  drawDrivingRoute(
+                    currentReq.ambulanceLat,
+                    currentReq.ambulanceLng,
+                    currentReq.hospitalLat,
+                    currentReq.hospitalLng
+                  );
+                }
+                // else → pickup point
+                else if (currentReq.pickup?.lat && currentReq.pickup?.lng) {
+                  drawDrivingRoute(
+                    currentReq.ambulanceLat,
+                    currentReq.ambulanceLng,
+                    currentReq.pickup.lat,
+                    currentReq.pickup.lng
+                  );
+                }
+              });
 
               update(ref(db, "requests/" + requestId), {
                 status: "Accepted",
@@ -248,12 +287,36 @@
                   }
 
                   // redraw route
-                  drawDrivingRoute(
-                    ambLat,
-                    ambLng,
-                    req.pickup.lat,
-                    req.pickup.lng
-                  );
+                  if (req.status === "PickedUp") {
+                    // After pickup → hospital
+                    drawDrivingRoute(
+                      req.ambulanceLat,
+                      req.ambulanceLng,
+                      req.pickup.lat,
+                      req.pickup.lng
+                    );
+
+                    // Fit map between ambulance + hospital
+                    const bounds = L.latLngBounds([
+                      [ambLat, ambLng],
+                      [req.hospitalLat, req.hospitalLng],
+                    ]);
+                    map.fitBounds(bounds, { padding: [50, 50] });
+                  } else {
+                    // Before pickup → pickup point
+                    drawDrivingRoute(
+                      req.ambulanceLat,
+                      req.ambulanceLng,
+                      req.pickup.lat,
+                      req.pickup.lng
+                    );
+
+                    const bounds = L.latLngBounds([
+                      [ambLat, ambLng],
+                      [req.pickup.lat, req.pickup.lng],
+                    ]);
+                    map.fitBounds(bounds, { padding: [50, 50] });
+                  }
 
                   // 🎯 Auto-fit map like Ola/Uber (ambulance + pickup)
                   const bounds = L.latLngBounds([
@@ -306,6 +369,16 @@
           }
         });
       });
+
+      document.getElementById("pickupBtn").onclick = async () => {
+        if (!activeRequestId) return;
+
+        await update(ref(db, "requests/" + activeRequestId), {
+          status: "PickedUp",
+        });
+
+        alert("🚑 Patient picked up, heading to hospital!");
+      };
     </script>
   </body>
 </html>
