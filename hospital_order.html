@@ -266,38 +266,43 @@
 
         // Listen for updates (ambulance accepted)
         onValue(requestRef, (snapshot) => {
-          const updated = snapshot.val();
-          if (!updated) return;
+  const updated = snapshot.val();
+  if (!updated) return;
 
-          if (updated.status === "Accepted") {
-            statusArea.innerText = `🚑 Ambulance assigned: ${updated.ambulancePlate} (${updated.ambulanceDriver})`;
+  if (updated.status === "Accepted") {
+    statusArea.innerText = `🚑 Ambulance assigned: ${updated.ambulancePlate} (${updated.ambulanceDriver})`;
 
-            if (updated.ambulanceLat && updated.ambulanceLng) {
-              // update ambulance marker
-              if (updated.ambulanceLat && updated.ambulanceLng) {
-                ambulanceMarker = safeUpdateMap(
-                  updated.ambulanceLat,
-                  updated.ambulanceLng,
-                  `🚑 Ambulance: ${updated.ambulancePlate}`,
-                  ambulanceMarker
-                );
+    if (updated.ambulanceLat && updated.ambulanceLng) {
+      // 🚑 Update ambulance marker
+      if (ambulanceMarker) map.removeLayer(ambulanceMarker);
+      ambulanceMarker = L.marker(
+        [updated.ambulanceLat, updated.ambulanceLng],
+        { icon: ambulanceIcon }
+      )
+        .addTo(map)
+        .bindPopup(`🚑 Ambulance: ${updated.ambulancePlate}`)
+        .openPopup();
 
-                // change the icon to ambulance
-                ambulanceMarker.setIcon(ambulanceIcon);
+      // 🛣 Draw live route ambulance → pickup
+      if (updated.pickup?.lat && updated.pickup?.lng) {
+        drawDrivingRoute(
+          updated.ambulanceLat,
+          updated.ambulanceLng,
+          updated.pickup.lat,
+          updated.pickup.lng
+        );
 
-                // draw live route from ambulance → pickup
-                if (updated.pickup?.lat && updated.pickup?.lng) {
-                  drawDrivingRoute(
-                    updated.ambulanceLat,
-                    updated.ambulanceLng,
-                    updated.pickup.lat,
-                    updated.pickup.lng
-                  );
-                }
-              }
-            }
-          }
-        });
+        // 🎯 Fit map to both ambulance & pickup like Ola/Uber
+        const bounds = L.latLngBounds([
+          [updated.ambulanceLat, updated.ambulanceLng],
+          [updated.pickup.lat, updated.pickup.lng],
+        ]);
+        map.fitBounds(bounds, { padding: [50, 50] });
+      }
+    }
+  }
+});
+
       };
     </script>
   </body>
