@@ -24,7 +24,7 @@ body {
     
 .panel {
     width: 40%;
-    background-color: #000;
+    background-color:white;
     position: relative;
     display: flex;
     flex-direction: column;
@@ -122,4 +122,5 @@ h1 {
 
 .button:hover {
     animation: buttonGlow 2s infinite;
+
 }
