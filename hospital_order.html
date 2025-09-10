@@ -9,87 +9,43 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
-    <style>
-      body {
-        font-family: system-ui;
-        margin: 18px;
-      }
-      input,
-      select,
-      button,
-      textarea {
-        display: block;
-        margin: 8px 0;
-        padding: 8px;
-        width: 100%;
-        max-width: 480px;
-      }
-      .card {
-        border: 1px solid #ddd;
-        padding: 12px;
-        border-radius: 8px;
-        max-width: 520px;
-      }
-      .small {
-        font-size: 0.9rem;
-        color: #555;
-      }
-      #map {
-        height: 500px;
-        width: 100%;
-        margin-top: 20px;
-      }
-      ul {
-        list-style: none;
-        padding: 0;
-        margin: 0;
-        border: 1px solid #ccc;
-        border-radius: 4px;
-        max-width: 480px;
-      }
-      li {
-        padding: 5px;
-        cursor: pointer;
-        border-bottom: 1px solid #eee;
-      }
-      li:hover {
-        background: #f0f0f0;
-      }
-    </style>
+    <link rel="stylesheet" href="hospital.css" />
   </head>
   <body>
     <h1>Hospital — Request Ambulance</h1>
 
-    <div class="card">
-      <input id="hospitalId" placeholder="Hospital Name" />
-      <ul id="hospitalSuggestions"></ul>
+    <div class="container">
+      <div class="card form-area">
+        <input id="hospitalId" placeholder="Hospital Name" />
+        <ul id="hospitalSuggestions"></ul>
 
-      <input id="patientName" placeholder="Patient Name" />
-      <input
-        id="pickupSearch"
-        placeholder="Enter address or pincode"
-        autocomplete="off"
-      />
-      <ul id="suggestions"></ul>
+        <input id="patientName" placeholder="Patient Name" />
+        <input
+          id="pickupSearch"
+          placeholder="Enter address or pincode"
+          autocomplete="off"
+        />
+        <ul id="suggestions"></ul>
 
-      <button id="useMyLocation">Use My Current Location</button>
-      <button id="useTypedLocation">Use This Location</button>
+        <button id="useMyLocation">Use My Current Location</button>
+        <button id="useTypedLocation">Use This Location</button>
 
-      <select id="priority">
-        <option value="normal">Normal</option>
-        <option value="urgent">Urgent</option>
-        <option value="critical">Critical</option>
-      </select>
+        <select id="priority">
+          <option value="normal">Normal</option>
+          <option value="urgent">Urgent</option>
+          <option value="critical">Critical</option>
+        </select>
 
-      <textarea id="notes" placeholder="Extra Notes"></textarea>
-      <button id="requestBtn">Request Ambulance</button>
-      <div id="statusArea" class="small">No requests yet.</div>
+        <textarea id="notes" placeholder="Extra Notes"></textarea>
+        <button id="requestBtn">Request Ambulance</button>
+        <div id="statusArea" class="small">No requests yet.</div>
+      </div>
+
+      <div id="map"></div>
     </div>
 
-    <div id="map"></div>
-
     <script type="module">
-      import { odishaHospitals } from "./Hospitals.js";
+      import { odishaHospitals } from "./hospitals.js";
       import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
       import {
         getDatabase,
@@ -142,10 +98,25 @@
         return L.marker([lat, lng]).addTo(map).bindPopup(text).openPopup();
       }
 
+      // --- Reverse Geocoding (direct to Nominatim, no server needed) ---
+      async function reverseGeocode(lat, lon) {
+        try {
+          const resp = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`
+          );
+          return await resp.json();
+        } catch (err) {
+          console.error("Error fetching address:", err);
+          return null;
+        }
+      }
+
       // --- Pickup Search ---
       const suggestionsList = document.getElementById("suggestions");
+
       pickupSearchInput.addEventListener("input", async () => {
-        const query = pickupSearchInput.value.trim();
+        const a = pickupSearchInput.value;
+        const query = a.trim();
         if (query.length < 3) {
           suggestionsList.innerHTML = "";
           return;
@@ -178,9 +149,14 @@
 
       // --- Current Location ---
       document.getElementById("useMyLocation").onclick = () => {
-        navigator.geolocation.getCurrentPosition((pos) => {
+        navigator.geolocation.getCurrentPosition(async (pos) => {
           selectedCoords = [pos.coords.latitude, pos.coords.longitude];
-          pickupSearchInput.value = "Your Current Location";
+          const data = await reverseGeocode(
+            pos.coords.latitude,
+            pos.coords.longitude
+          );
+          pickupSearchInput.value =
+            data?.display_name || "Your Current Location";
           pickupMarker = safeUpdateMap(
             selectedCoords[0],
             selectedCoords[1],
@@ -256,6 +232,7 @@
         };
 
         await set(requestRef, requestData);
+
         statusArea.innerText = `Request created (ID: ${requestRef.key}). Waiting for ambulance...`;
 
         // Listen for updates (ambulance accepted)
