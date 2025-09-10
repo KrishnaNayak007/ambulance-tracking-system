@@ -223,22 +223,48 @@
               });
 
               // Keep updating as driver moves
-              navigator.geolocation.watchPosition((pos) => {
-                const ambLat = pos.coords.latitude;
-                const ambLng = pos.coords.longitude;
+              // Keep updating as driver moves
+              navigator.geolocation.watchPosition(
+                (pos) => {
+                  const ambLat = pos.coords.latitude;
+                  const ambLng = pos.coords.longitude;
 
-                update(ref(db, "requests/" + activeRequestId), {
-                  ambulanceLat: ambLat,
-                  ambulanceLng: ambLng,
-                });
+                  // update Firebase with ambulance position
+                  update(ref(db, "requests/" + activeRequestId), {
+                    ambulanceLat: ambLat,
+                    ambulanceLng: ambLng,
+                  });
 
-                drawDrivingRoute(
-                  ambLat,
-                  ambLng,
-                  req.pickup.lat,
-                  req.pickup.lng
-                );
-              });
+                  // update or create ambulance marker
+                  if (driverMarker) {
+                    driverMarker.setLatLng([ambLat, ambLng]);
+                  } else {
+                    driverMarker = L.marker([ambLat, ambLng], {
+                      icon: driverIcon,
+                    })
+                      .addTo(map)
+                      .bindPopup("🚑 You are here")
+                      .openPopup();
+                  }
+
+                  // redraw route
+                  drawDrivingRoute(
+                    ambLat,
+                    ambLng,
+                    req.pickup.lat,
+                    req.pickup.lng
+                  );
+
+                  // 🎯 Auto-fit map like Ola/Uber (ambulance + pickup)
+                  const bounds = L.latLngBounds([
+                    [ambLat, ambLng],
+                    [req.pickup.lat, req.pickup.lng],
+                  ]);
+                  map.fitBounds(bounds, { padding: [50, 50] });
+                },
+                (err) => console.error("Location error:", err),
+                { enableHighAccuracy: true }
+              );
 
               // Show pickup on map
               if (req.pickup?.lat && req.pickup?.lng) {
