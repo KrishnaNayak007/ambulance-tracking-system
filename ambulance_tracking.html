@@ -238,7 +238,12 @@
                   .bindPopup("🚑 You are here")
                   .openPopup();
 
-                drawDrivingRoute(ambLat, ambLng, req.pickup.lat, req.pickup.lng);
+                drawDrivingRoute(
+                  ambLat,
+                  ambLng,
+                  req.pickup.lat,
+                  req.pickup.lng
+                );
               });
 
               navigator.geolocation.watchPosition((pos) => {
@@ -252,7 +257,9 @@
                 if (driverMarker) {
                   driverMarker.setLatLng([ambLat, ambLng]);
                 } else {
-                  driverMarker = L.marker([ambLat, ambLng], { icon: driverIcon })
+                  driverMarker = L.marker([ambLat, ambLng], {
+                    icon: driverIcon,
+                  })
                     .addTo(map)
                     .bindPopup("🚑 You are here")
                     .openPopup();
@@ -278,10 +285,19 @@
                 });
                 alert("✅ Trip completed!");
                 infoDiv.innerHTML = "Trip marked as completed.";
+
+                // 🔹 Remove hospital marker
                 if (hospitalMarker) {
                   map.removeLayer(hospitalMarker);
                   hospitalMarker = null;
                 }
+
+                // 🔹 Remove polyline route
+                if (routeLine) {
+                  map.removeLayer(routeLine);
+                  routeLine = null;
+                }
+
                 activeRequestId = null;
               };
             };
@@ -304,4 +320,3 @@
     </script>
   </body>
 </html>
-
