@@ -1,13 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>Driver Registration</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <link rel="stylesheet" href="ambulance_registration.css" />
-</head>
-<body>
-  <div class="card">
+  <head>
+    <meta charset="utf-8" />
+    <title>Driver Registration</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <link rel="stylesheet" href="ambulance_registration.css" />
+  </head>
+  <body>
+    <div class="card">
     <h2>🚑 Driver Registration</h2>
     <label for="driverName">Driver Name</label>
     <input id="driverName" placeholder="Driver Name" />
@@ -20,64 +20,72 @@
     <button id="registerBtn">Register</button>
     <div id="status"></div>
   </div>
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-    import { getDatabase, ref, set } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
-    import { odishaHospitals } from './hospitals.js';
+    <script type="module">
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+      import {
+        getDatabase,
+        ref,
+        set,
+      } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+      import { odishaHospitals } from "./hospitals.js";
 
-    // Firebase config
-    const firebaseConfig = {
-      apiKey: "AIzaSyCVOmAoo9h2-VJ6I7OCK2Naj2fYQq_Io1s",
-      authDomain: "ambulance-tracking-syste-21793.firebaseapp.com",
-      databaseURL: "https://ambulance-tracking-syste-21793-default-rtdb.asia-southeast1.firebasedatabase.app/",
-      projectId: "ambulance-tracking-syste-21793",
-      storageBucket: "ambulance-tracking-syste-21793.appspot.com",
-      messagingSenderId: "1057546446784",
-      appId: "1:1057546446784:web:549e7f233fdd29786fca25",
-    };
+      // Firebase config
+      const firebaseConfig = {
+        apiKey: "AIzaSyCVOmAoo9h2-VJ6I7OCK2Naj2fYQq_Io1s",
+        authDomain: "ambulance-tracking-syste-21793.firebaseapp.com",
+        databaseURL:
+          "https://ambulance-tracking-syste-21793-default-rtdb.asia-southeast1.firebasedatabase.app/",
+        projectId: "ambulance-tracking-syste-21793",
+        storageBucket: "ambulance-tracking-syste-21793.appspot.com",
+        messagingSenderId: "1057546446784",
+        appId: "1:1057546446784:web:549e7f233fdd29786fca25",
+      };
 
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
+      const app = initializeApp(firebaseConfig);
+      const db = getDatabase(app);
 
-    // Populate hospital dropdown
-    const hospitalSelect = document.getElementById("hospitalSelect");
-    odishaHospitals.forEach(h => {
-      const opt = document.createElement("option");
-      opt.value = h.name;
-      opt.textContent = h.name;
-      hospitalSelect.appendChild(opt);
-    });
+      // Populate hospital dropdown
+      const hospitalSelect = document.getElementById("hospitalSelect");
+      odishaHospitals.forEach((h) => {
+        const opt = document.createElement("option");
+        opt.value = h.name;
+        opt.textContent = h.name;
+        hospitalSelect.appendChild(opt);
+      });
 
-    document.getElementById("registerBtn").onclick = async () => {
-      const name = document.getElementById("driverName").value.trim();
-      const plate = document.getElementById("ambulancePlate").value.trim();
-      const hospital = hospitalSelect.value || null;
+      document.getElementById("registerBtn").onclick = async () => {
+        const name = document.getElementById("driverName").value.trim();
+        const plate = document.getElementById("ambulancePlate").value.trim();
+        const hospital = hospitalSelect.value || null;
 
-      if (!name || !plate) {
-        alert("Fill all fields!");
-        return;
-      }
+        if (!name || !plate) {
+          alert("Fill all fields!");
+          return;
+        }
 
-      try {
-        const ambRef = ref(db, "ambulances/" + plate);
-        await set(ambRef, {
-          driver: name,
-          plate: plate,
-          hospital: hospital,  // null if not selected
-          status: "available",
-          lat: null,
-          lng: null,
-          lastUpdated: null
-        });
+        try {
+          const ambRef = ref(db, "ambulances/" + plate);
+          await set(ambRef, {
+            driver: name,
+            plate: plate,
+            hospital: hospital, // null if not selected
+            status: "available",
+            lat: null,
+            lng: null,
+            lastUpdated: null,
+          });
 
-        localStorage.setItem("driverPlate", plate); // Save plate locally
-        document.getElementById("status").innerText = "✅ Registered successfully!";
-        setTimeout(() => { window.location.href = "ambulance_tracking.html"; }, 1500);
-      } catch (error) {
-        console.error("Error registering driver:", error);
-        alert("❌ Registration failed. See console for details.");
-      }
-    };
-  </script>
-</body>
+          localStorage.setItem("driverPlate", plate); // Save plate locally
+          document.getElementById("status").innerText =
+            "✅ Registered successfully!";
+          setTimeout(() => {
+            window.location.href = "ambulance_tracking.html";
+          }, 1500);
+        } catch (error) {
+          console.error("Error registering driver:", error);
+          alert("❌ Registration failed. See console for details.");
+        }
+      };
+    </script>
+  </body>
 </html>
