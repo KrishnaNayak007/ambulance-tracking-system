@@ -1,0 +1,75 @@
+/* Reset and base */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: "Inter", system-ui, sans-serif;
+}
+
+body.home {
+  background: #eaf6fb;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+}
+
+/* Card container */
+.center-card {
+  background: #ffffff;
+  padding: 30px 40px;
+  border-radius: 16px;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.1);
+  text-align: center;
+}
+
+/* Heading box */
+.heading-box {
+  background: #42acc6;
+  padding: 16px 20px;
+  border-radius: 8px;
+  margin-bottom: 24px;
+}
+
+.heading-box h1 {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+/* Image styling */
+.center-card img {
+  border-radius: 12px;
+  max-width: 100%;
+  height: auto;
+  margin-bottom: 24px;
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.08);
+}
+
+/* Buttons container */
+.role-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+/* Buttons */
+.btn {
+  background-color: #3ba7b7;
+  color: #ffffff;
+  text-decoration: none;
+  font-weight: 600;
+  padding: 12px 20px;
+  border-radius: 10px;
+  transition: background 0.3s ease, transform 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 1rem;
+}
+
+.btn:hover {
+  background-color: #3295a3;
+  transform: translateY(-2px);
+}
