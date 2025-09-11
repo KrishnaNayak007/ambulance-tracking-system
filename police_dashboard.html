@@ -113,6 +113,7 @@
       window.ambulanceMarkers = {};
       window.routeLines = {};
       window.hospitalCircles = {};
+      const insideAmbulances = new Set();
 
       const requestsTableBody = document.querySelector("#requestsTable tbody");
 
@@ -126,10 +127,8 @@
             clearInterval(interval);
             return;
           }
-          const lat =
-            current.lat + ((newLatLng.lat - current.lat) / steps) * i;
-          const lng =
-            current.lng + ((newLatLng.lng - current.lng) / steps) * i;
+          const lat = current.lat + ((newLatLng.lat - current.lat) / steps) * i;
+          const lng = current.lng + ((newLatLng.lng - current.lng) / steps) * i;
           marker.setLatLng([lat, lng]);
           i++;
         }, 50);
@@ -169,13 +168,17 @@
         }
         const row = document.getElementById(`request-row-${id}`);
         if (row) row.remove();
+        insideAmbulances.delete(id);
       }
 
       // Add request row
       function addRequestToTable(req, id) {
-        if (document.getElementById(`request-row-${id}`)) return;
-        const row = document.createElement("tr");
-        row.id = `request-row-${id}`;
+        let row = document.getElementById(`request-row-${id}`);
+        if (!row) {
+          row = document.createElement("tr");
+          row.id = `request-row-${id}`;
+          requestsTableBody.appendChild(row);
+        }
         row.innerHTML = `
           <td>${req.patientName || "-"}</td>
           <td>${req.hospitalId || "-"}</td>
@@ -183,45 +186,81 @@
           <td>${req.priority || "-"}</td>
           <td>${req.status || "-"}</td>
         `;
-        requestsTableBody.appendChild(row);
+      }
+
+      // Police location + 2km zone
+      let policeLat = null,
+        policeLng = null,
+        policeCircle = null;
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition((pos) => {
+          policeLat = pos.coords.latitude;
+          policeLng = pos.coords.longitude;
+
+          policeCircle = L.circle([policeLat, policeLng], {
+            radius: 2000,
+            color: "blue",
+            fillColor: "blue",
+            fillOpacity: 0.1,
+          })
+            .addTo(map)
+            .bindPopup("🚓 Police 2km Zone");
+          map.setView([policeLat, policeLng], 14);
+        });
       }
 
       // Listen to requests
       const requestsRef = ref(db, "requests");
+      requestsTableBody.innerHTML = "";
       onValue(requestsRef, (snapshot) => {
         snapshot.forEach((child) => {
           const req = child.val();
           const id = child.key;
 
-          // ✅ Remove if completed
-          if (req.status === "Completed") {
+          if (
+            !req.ambulanceLat ||
+            !req.ambulanceLng ||
+            !policeLat ||
+            !policeLng
+          )
+            return;
+
+          const ambLatLng = L.latLng(req.ambulanceLat, req.ambulanceLng);
+          const distance = map.distance([policeLat, policeLng], ambLatLng);
+
+          // ✅ Remove if completed OR out of 2km
+          if (req.status === "Completed" || distance > 2000) {
             clearAmbulanceFromMap(id);
             return;
           }
 
-          // Show only if accepted or picked up
+          // 🚨 Alert when ambulance newly enters 2km zone
+          if (!insideAmbulances.has(id) && distance <= 2000) {
+            insideAmbulances.add(id);
+            alert(
+              `🚨 Ambulance ${req.ambulancePlate || id} entered police 2km zone!`
+            );
+          }
+
           if (req.status === "Accepted" || req.status === "PickedUp") {
             addRequestToTable(req, id);
 
-            // Add hospital circle (2 km)
+            // Hospital circle
             if (req.hospitalLat && req.hospitalLng && !window.hospitalCircles[id]) {
               window.hospitalCircles[id] = L.circle(
                 [req.hospitalLat, req.hospitalLng],
-                {
-                  radius: 2000,
-                  color: "red",
-                  fillOpacity: 0.1,
-                }
+                { radius: 2000, color: "red", fillOpacity: 0.1 }
               ).addTo(map);
             }
 
-            // Add / update ambulance marker
+            // Ambulance marker
             if (!window.ambulanceMarkers[id]) {
               window.ambulanceMarkers[id] = L.marker(
                 [req.ambulanceLat, req.ambulanceLng],
                 {
                   icon: L.icon({
-                    iconUrl: "https://cdn-icons-png.flaticon.com/512/3181/3181919.png",
+                    iconUrl:
+                      "https://cdn-icons-png.flaticon.com/512/3181/3181919.png",
                     iconSize: [32, 32],
                     iconAnchor: [16, 16],
                   }),
@@ -234,10 +273,7 @@
                    Status: ${req.status || "-"}`
                 );
             } else {
-              smoothMove(
-                window.ambulanceMarkers[id],
-                L.latLng(req.ambulanceLat, req.ambulanceLng)
-              );
+              smoothMove(window.ambulanceMarkers[id], ambLatLng);
             }
 
             // Draw correct route
