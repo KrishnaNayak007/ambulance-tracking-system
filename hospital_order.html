@@ -38,7 +38,7 @@
 
         <textarea id="notes" placeholder="Extra Notes"></textarea>
         <button id="requestBtn">Request Ambulance</button>
-        <button id="emergencyBtn" style="background:red;color:white;">
+        <button id="emergencyBtn" style="background: red; color: white">
           🚨 Emergency Booking
         </button>
         <div id="statusArea" class="small">No requests yet.</div>
@@ -70,10 +70,10 @@
         messagingSenderId: "1057546446784",
         appId: "1:1057546446784:web:549e7f233fdd29786fca25",
       };
-
       const app = initializeApp(firebaseConfig);
       const db = getDatabase(app);
 
+      // 🔹 DOM Elements
       const hospitalInput = document.getElementById("hospitalId");
       const hospitalSuggestions = document.getElementById(
         "hospitalSuggestions"
@@ -83,11 +83,9 @@
       const statusArea = document.getElementById("statusArea");
       let selectedCoords = null;
       let pickupMarker = null;
-      let ambulanceMarker = null;
-      let hospitalMarker = null;
       let selectedHospital = null;
 
-      // 🚑 Custom Ambulance Icon
+      // 🔹 Custom Icons
       const ambulanceIcon = L.icon({
         iconUrl: "https://cdn-icons-png.flaticon.com/512/3181/3181919.png",
         iconSize: [40, 40],
@@ -95,62 +93,39 @@
         popupAnchor: [0, -20],
       });
 
-      // 🏥 Custom Hospital Icon
       const hospitalIcon = L.icon({
-        iconUrl:
-          "https://cdn-icons-png.flaticon.com/512/3176/3176366.png",
+        iconUrl: "https://cdn-icons-png.flaticon.com/512/3176/3176366.png",
         iconSize: [40, 40],
         iconAnchor: [20, 40],
         popupAnchor: [0, -35],
       });
 
-      let routeLine = null;
-
-      // --- Map ---
+      // 🔹 Map Setup
       const map = L.map("map").setView([20.5937, 78.9629], 5);
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution: "&copy; OpenStreetMap contributors",
       }).addTo(map);
 
+      // 🔹 Helper
       function safeUpdateMap(lat, lng, text, markerRef) {
-        if (!lat || !lng || isNaN(lat) || isNaN(lng)) {
-          console.warn("⚠️ Skipping marker update — missing lat/lng");
-          return markerRef;
-        }
+        if (!lat || !lng || isNaN(lat) || isNaN(lng)) return markerRef;
         if (markerRef) map.removeLayer(markerRef);
         map.setView([lat, lng], 15);
         return L.marker([lat, lng]).addTo(map).bindPopup(text).openPopup();
       }
 
-      async function drawDrivingRoute(ambLat, ambLng, pickLat, pickLng) {
-        const url = `https://router.project-osrm.org/route/v1/driving/${ambLng},${ambLat};${pickLng},${pickLat}?overview=full&geometries=geojson`;
-        const resp = await fetch(url);
-        const data = await resp.json();
-        if (!data.routes || data.routes.length === 0) return;
-
-        const coords = data.routes[0].geometry.coordinates.map((c) => [
-          c[1],
-          c[0],
-        ]);
-        if (routeLine) map.removeLayer(routeLine);
-        routeLine = L.polyline(coords, { color: "blue", weight: 5 }).addTo(map);
-        map.fitBounds(routeLine.getBounds(), { padding: [30, 30] });
-      }
-
-      // --- Reverse Geocoding ---
       async function reverseGeocode(lat, lon) {
         try {
           const resp = await fetch(
             `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`
           );
           return await resp.json();
-        } catch (err) {
-          console.error("Error fetching address:", err);
+        } catch {
           return null;
         }
       }
 
-      // --- Address Search ---
+      // 🔹 Address Search
       const suggestionsList = document.getElementById("suggestions");
       pickupSearchInput.addEventListener("input", async () => {
         const query = pickupSearchInput.value.trim();
@@ -183,37 +158,26 @@
         });
       });
 
-      // --- Current Location ---
+      // 🔹 Current Location
       document.getElementById("useMyLocation").onclick = () => {
-        navigator.geolocation.getCurrentPosition(
-          async (pos) => {
-            selectedCoords = [pos.coords.latitude, pos.coords.longitude];
-            const data = await reverseGeocode(
-              pos.coords.latitude,
-              pos.coords.longitude
-            );
-            pickupSearchInput.value =
-              data?.display_name || "Your Current Location";
-            pickupMarker = safeUpdateMap(
-              selectedCoords[0],
-              selectedCoords[1],
-              "Pickup Location",
-              pickupMarker
-            );
-          },
-          () => alert("Failed to get location. Enable GPS.")
-        );
+        navigator.geolocation.getCurrentPosition(async (pos) => {
+          selectedCoords = [pos.coords.latitude, pos.coords.longitude];
+          const data = await reverseGeocode(
+            pos.coords.latitude,
+            pos.coords.longitude
+          );
+          pickupSearchInput.value =
+            data?.display_name || "Your Current Location";
+          pickupMarker = safeUpdateMap(
+            selectedCoords[0],
+            selectedCoords[1],
+            "Pickup Location",
+            pickupMarker
+          );
+        });
       };
 
-      document.getElementById("useTypedLocation").onclick = () => {
-        if (!selectedCoords) {
-          alert("Select a location first!");
-          return;
-        }
-        alert("Location confirmed: " + pickupSearchInput.value);
-      };
-
-      // --- Hospital Autocomplete ---
+      // 🔹 Hospital Autocomplete
       hospitalInput.addEventListener("input", () => {
         const query = hospitalInput.value.toLowerCase().trim();
         hospitalSuggestions.innerHTML = "";
@@ -221,12 +185,6 @@
         const matches = odishaHospitals.filter((h) =>
           (h?.name || "").toLowerCase().includes(query)
         );
-        if (matches.length === 0) {
-          const li = document.createElement("li");
-          li.textContent = "No hospitals found";
-          hospitalSuggestions.appendChild(li);
-          return;
-        }
         matches.forEach((hospital) => {
           const li = document.createElement("li");
           li.textContent = hospital.name;
@@ -239,50 +197,251 @@
         });
       });
 
-      // --- Dummy Ambulance Data (replace with Firebase in future) ---
-      const ambulances = [
-        { id: "AMB1", driver: "Rajesh", plate: "OD-02-1234", lat: 20.30, lng: 85.82 },
-        { id: "AMB2", driver: "Suresh", plate: "OD-05-5678", lat: 20.32, lng: 85.85 },
-        { id: "AMB3", driver: "Anil", plate: "OD-10-9999", lat: 20.31, lng: 85.80 },
-      ];
+      // 🔹 Fetch real ambulances from Firebase
+      let ambulances = [];
 
-      function calcCost(lat1, lng1, lat2, lng2) {
-        const R = 6371;
-        const dLat = (lat2 - lat1) * Math.PI / 180;
-        const dLng = (lng2 - lng1) * Math.PI / 180;
-        const a =
-          Math.sin(dLat/2) * Math.sin(dLat/2) +
-          Math.cos(lat1 * Math.PI / 180) *
-          Math.cos(lat2 * Math.PI / 180) *
-          Math.sin(dLng/2) * Math.sin(dLng/2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-        return (R * c * 10).toFixed(0); // cost = distance*10
+      function loadAmbulances() {
+        const ambRef = ref(db, "ambulances"); // instead of root
+
+        onValue(ambRef, (snapshot) => {
+          ambulances = [];
+          snapshot.forEach((child) => {
+            const amb = child.val();
+            if (amb.lat && amb.lng) {
+              ambulances.push({
+                id: child.key,
+                driver: amb.driver || "-",
+                plate: amb.plate || child.key,
+                lat: amb.lat,
+                lng: amb.lng,
+                status: amb.status || "unknown",
+              });
+            }
+          });
+
+          console.log("✅ Loaded ambulances:", ambulances);
+          
+        });
       }
 
+      loadAmbulances();
+
+      // 🔹 Cost Function
+      function calcCost(lat1, lng1, lat2, lng2) {
+        const R = 6371;
+        const dLat = ((lat2 - lat1) * Math.PI) / 180;
+        const dLng = ((lng2 - lng1) * Math.PI) / 180;
+        const a =
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos((lat1 * Math.PI) / 180) *
+            Math.cos((lat2 * Math.PI) / 180) *
+            Math.sin(dLng / 2) *
+            Math.sin(dLng / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return (R * c * 10).toFixed(0);
+      }
+
+      // 🔹 Show Ambulances
       function showAmbulances() {
         ambulances.forEach((amb) => {
-          const cost = calcCost(
-            selectedCoords[0],
-            selectedCoords[1],
-            selectedHospital.lat,
-            selectedHospital.lng
-          );
-          const marker = L.marker([amb.lat, amb.lng], { icon: ambulanceIcon }).addTo(map);
+          let cost = "N/A";
+
+          if (selectedCoords && selectedHospital) {
+            cost = calcCost(
+              selectedCoords[0],
+              selectedCoords[1],
+              selectedHospital.lat,
+              selectedHospital.lng
+            );
+          }
+
+          const marker = L.marker([amb.lat, amb.lng], {
+            icon: ambulanceIcon,
+          }).addTo(map);
+
           marker.bindPopup(
-            `<b>🚑 Ambulance ${amb.plate}</b><br>Driver: ${amb.driver}<br>Cost: ₹${cost}<br>
-            <button onclick="window.confirmBooking('${amb.id}')">Confirm Booking</button>`
+            `<b>🚑 Ambulance ${amb.plate}</b><br>Driver: ${amb.driver}<br>
+       Cost: ${
+         cost !== "N/A" ? "₹" + cost : "⚠ Select pickup & hospital first"
+       }<br>
+       <button onclick="window.confirmBooking('${
+         amb.id
+       }')">Confirm Booking</button>`
           );
         });
       }
 
-      // --- Confirm Booking (global function for popup buttons) ---
+      // 🔹 Live Tracking (original variables; reused below)
+      let activeAmbulanceMarker = null;
+      let hospitalDestMarker = null;
+      let activeRouteLine = null;
+
+      function trackAmbulance(ambId, hospital) {
+        const ambRef = ref(db, `ambulances/${ambId}`);
+        onValue(ambRef, async (snapshot) => {
+          const data = snapshot.val();
+          if (!data || !data.lat || !data.lng) return;
+
+          if (activeAmbulanceMarker) map.removeLayer(activeAmbulanceMarker);
+          activeAmbulanceMarker = L.marker([data.lat, data.lng], {
+            icon: ambulanceIcon,
+          })
+            .addTo(map)
+            .bindPopup(`🚑 ${ambId}<br>Driver: ${data.driver || ""}`)
+            .openPopup();
+
+          if (hospital && hospital.lat && hospital.lng) {
+            if (hospitalDestMarker) map.removeLayer(hospitalDestMarker);
+            hospitalDestMarker = L.marker([hospital.lat, hospital.lng], {
+              icon: hospitalIcon,
+            })
+              .addTo(map)
+              .bindPopup("🏥 Hospital Destination");
+
+            const url = `https://router.project-osrm.org/route/v1/driving/${data.lng},${data.lat};${hospital.lng},${hospital.lat}?overview=full&geometries=geojson`;
+            const resp = await fetch(url);
+            const routeData = await resp.json();
+            if (!routeData.routes || routeData.routes.length === 0) return;
+
+            const coords = routeData.routes[0].geometry.coordinates.map((c) => [
+              c[1],
+              c[0],
+            ]);
+            if (activeRouteLine) map.removeLayer(activeRouteLine);
+            activeRouteLine = L.polyline(coords, {
+              color: "blue",
+              weight: 5,
+            }).addTo(map);
+            map.fitBounds(activeRouteLine.getBounds(), { padding: [50, 50] });
+          }
+        });
+      }
+
+      // ------------- NEW: drawRoute + trackRequest (only additive) ----------------
+      async function drawRoute(startLat, startLng, endLat, endLng) {
+        if (!startLat || !startLng || !endLat || !endLng) return;
+        try {
+          const url = `https://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${endLng},${endLat}?overview=full&geometries=geojson`;
+          const resp = await fetch(url);
+          const data = await resp.json();
+          if (!data.routes || data.routes.length === 0) return;
+          const coords = data.routes[0].geometry.coordinates.map((c) => [
+            c[1],
+            c[0],
+          ]);
+          if (activeRouteLine) map.removeLayer(activeRouteLine);
+          activeRouteLine = L.polyline(coords, {
+            color: "blue",
+            weight: 5,
+          }).addTo(map);
+          map.fitBounds(activeRouteLine.getBounds(), { padding: [50, 50] });
+        } catch (err) {
+          console.error("drawRoute error", err);
+        }
+      }
+
+      // watches a specific request and updates map based on its status
+      function trackRequest(requestId) {
+        if (!requestId) return;
+        const reqRef = ref(db, "requests/" + requestId);
+        onValue(reqRef, (snapshot) => {
+          const req = snapshot.val();
+          if (!req) return;
+
+          // if ambulance location available — show/update ambulance marker
+          if (req.ambulanceLat && req.ambulanceLng) {
+            if (activeAmbulanceMarker) {
+              activeAmbulanceMarker.setLatLng([
+                req.ambulanceLat,
+                req.ambulanceLng,
+              ]);
+            } else {
+              activeAmbulanceMarker = L.marker(
+                [req.ambulanceLat, req.ambulanceLng],
+                { icon: ambulanceIcon }
+              )
+                .addTo(map)
+                .bindPopup("🚑 Ambulance")
+                .openPopup();
+            }
+          }
+
+          // Accepted => route ambulance -> pickup
+          if (req.status === "Accepted") {
+            if (
+              req.ambulanceLat &&
+              req.ambulanceLng &&
+              req.pickup &&
+              req.pickup.lat &&
+              req.pickup.lng
+            ) {
+              drawRoute(
+                req.ambulanceLat,
+                req.ambulanceLng,
+                req.pickup.lat,
+                req.pickup.lng
+              );
+              statusArea.innerText =
+                "Driver accepted — ambulance is on the way.";
+            }
+          }
+
+          // PickedUp => route ambulance -> hospital
+          if (req.status === "PickedUp") {
+            if (
+              req.ambulanceLat &&
+              req.ambulanceLng &&
+              req.hospitalLat &&
+              req.hospitalLng
+            ) {
+              // show hospital marker
+              if (hospitalDestMarker) map.removeLayer(hospitalDestMarker);
+              hospitalDestMarker = L.marker(
+                [req.hospitalLat, req.hospitalLng],
+                { icon: hospitalIcon }
+              )
+                .addTo(map)
+                .bindPopup("🏥 Hospital")
+                .openPopup();
+
+              drawRoute(
+                req.ambulanceLat,
+                req.ambulanceLng,
+                req.hospitalLat,
+                req.hospitalLng
+              );
+              statusArea.innerText = "Patient picked up — heading to hospital.";
+            }
+          }
+
+          if (req.status === "Completed") {
+            statusArea.innerText = "Trip completed.";
+            alert("✅ Trip completed.");
+            // cleanup
+            if (activeRouteLine) {
+              map.removeLayer(activeRouteLine);
+              activeRouteLine = null;
+            }
+            if (activeAmbulanceMarker) {
+              map.removeLayer(activeAmbulanceMarker);
+              activeAmbulanceMarker = null;
+            }
+            if (hospitalDestMarker) {
+              map.removeLayer(hospitalDestMarker);
+              hospitalDestMarker = null;
+            }
+          }
+        });
+      }
+
+      // 🔹 Confirm Booking
       window.confirmBooking = async (ambId) => {
         const amb = ambulances.find((a) => a.id === ambId);
         if (!amb) return;
         if (!confirm(`Confirm booking ambulance ${amb.plate}?`)) return;
 
         const requestRef = push(ref(db, "requests"));
-        const requestData = {
+        await set(requestRef, {
           hospitalId: selectedHospital.name,
           patientName: patientNameInput.value.trim(),
           pickup: { lat: selectedCoords[0], lng: selectedCoords[1] },
@@ -294,16 +453,26 @@
           ambulanceId: amb.id,
           ambulancePlate: amb.plate,
           ambulanceDriver: amb.driver,
-          ambulanceLat: amb.lat,
-          ambulanceLng: amb.lng,
           hospitalLat: selectedHospital.lat,
           hospitalLng: selectedHospital.lng,
-        };
-        await set(requestRef, requestData);
-        alert("✅ Ambulance booked successfully!");
+        });
+
+        alert("✅ Ambulance booked! Now waiting for driver to accept…");
+
+        // keep original behavior (tracking ambulance node) but also start tracking the request object
+        try {
+          trackAmbulance(amb.id, selectedHospital);
+        } catch (e) {
+          /* ignore */
+        }
+        try {
+          trackRequest(requestRef.key);
+        } catch (e) {
+          /* ignore */
+        }
       };
 
-      // --- Request Button ---
+      // 🔹 Request Button
       document.getElementById("requestBtn").onclick = () => {
         if (!selectedCoords || !selectedHospital) {
           alert("Please select hospital and location first!");
@@ -313,13 +482,12 @@
         showAmbulances();
       };
 
-      // --- Emergency Button ---
+      // 🔹 Emergency Button
       document.getElementById("emergencyBtn").onclick = async () => {
         if (!selectedCoords || !selectedHospital) {
           alert("Please select hospital and location first!");
           return;
         }
-        // pick cheapest ambulance
         let cheapest = null;
         let cheapestCost = Infinity;
         ambulances.forEach((amb) => {
@@ -335,10 +503,15 @@
           }
         });
         if (!cheapest) return;
-        if (!confirm(`🚨 Emergency! Auto-book ${cheapest.plate} for ₹${cheapestCost}?`)) return;
+        if (
+          !confirm(
+            `🚨 Emergency! Auto-book ${cheapest.plate} for ₹${cheapestCost}?`
+          )
+        )
+          return;
 
         const requestRef = push(ref(db, "requests"));
-        const requestData = {
+        await set(requestRef, {
           hospitalId: selectedHospital.name,
           patientName: patientNameInput.value.trim(),
           pickup: { lat: selectedCoords[0], lng: selectedCoords[1] },
@@ -350,13 +523,21 @@
           ambulanceId: cheapest.id,
           ambulancePlate: cheapest.plate,
           ambulanceDriver: cheapest.driver,
-          ambulanceLat: cheapest.lat,
-          ambulanceLng: cheapest.lng,
           hospitalLat: selectedHospital.lat,
           hospitalLng: selectedHospital.lng,
-        };
-        await set(requestRef, requestData);
-        alert("🚑 Emergency ambulance booked!");
+        });
+
+        alert("🚑 Emergency ambulance booked! Waiting for driver to accept.");
+        try {
+          trackAmbulance(cheapest.id, selectedHospital);
+        } catch (e) {
+          /* ignore */
+        }
+        try {
+          trackRequest(requestRef.key);
+        } catch (e) {
+          /* ignore */
+        }
       };
     </script>
   </body>
