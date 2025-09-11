@@ -81,14 +81,23 @@
       let selectedCoords = null;
       let pickupMarker = null;
       let ambulanceMarker = null;
+      let hospitalMarker = null;
       let selectedHospital = null;
 
       // 🚑 Custom Ambulance Icon
       const ambulanceIcon = L.icon({
-        iconUrl: "https://cdn-icons-png.flaticon.com/512/3181/3181919.png", // Ambulance icon
-        iconSize: [40, 40], // size of the icon
-        iconAnchor: [20, 20], // point of the icon which corresponds to marker's location
-        popupAnchor: [0, -20], // popup position
+        iconUrl: "https://cdn-icons-png.flaticon.com/512/3181/3181919.png",
+        iconSize: [40, 40],
+        iconAnchor: [20, 20],
+        popupAnchor: [0, -20],
+      });
+
+      // 🏥 Custom Hospital Icon
+      const hospitalIcon = L.icon({
+        iconUrl: "https://www.flaticon.com/free-icon/hospital-buildings_33777",
+        iconSize: [40, 40],
+        iconAnchor: [20, 40],
+        popupAnchor: [0, -35],
       });
 
       let routeLine = null;
@@ -128,7 +137,7 @@
         map.fitBounds(routeLine.getBounds(), { padding: [30, 30] });
       }
 
-      // --- Reverse Geocoding (direct to Nominatim, no server needed) ---
+      // --- Reverse Geocoding ---
       async function reverseGeocode(lat, lon) {
         try {
           const resp = await fetch(
@@ -264,9 +273,6 @@
           ambulanceDriver: null,
           ambulanceLat: null,
           ambulanceLng: null,
-          hospitalLat: selectedHospital.lat,
-          hospitalLng: selectedHospital.lng,
-
           hospitalLat: selectedHospital?.lat || null,
           hospitalLng: selectedHospital?.lng || null,
         };
@@ -275,7 +281,7 @@
 
         statusArea.innerText = `Request created (ID: ${requestRef.key}). Waiting for ambulance...`;
 
-        // Listen for updates (ambulance accepted)
+        // Listen for updates
         onValue(requestRef, (snapshot) => {
           const updated = snapshot.val();
           if (!updated) return;
@@ -284,7 +290,6 @@
             statusArea.innerText = `🚑 Ambulance assigned: ${updated.ambulancePlate} (${updated.ambulanceDriver})`;
 
             if (updated.ambulanceLat && updated.ambulanceLng) {
-              // 🚑 Update ambulance marker
               if (ambulanceMarker) map.removeLayer(ambulanceMarker);
               ambulanceMarker = L.marker(
                 [updated.ambulanceLat, updated.ambulanceLng],
@@ -294,7 +299,6 @@
                 .bindPopup(`🚑 Ambulance: ${updated.ambulancePlate}`)
                 .openPopup();
 
-              // 🛣 Draw live route ambulance → pickup
               if (updated.pickup?.lat && updated.pickup?.lng) {
                 drawDrivingRoute(
                   updated.ambulanceLat,
@@ -302,8 +306,6 @@
                   updated.pickup.lat,
                   updated.pickup.lng
                 );
-
-                // 🎯 Fit map to both ambulance & pickup like Ola/Uber
                 const bounds = L.latLngBounds([
                   [updated.ambulanceLat, updated.ambulanceLng],
                   [updated.pickup.lat, updated.pickup.lng],
@@ -330,7 +332,6 @@
                 .bindPopup(`🚑 Ambulance: ${updated.ambulancePlate}`)
                 .openPopup();
 
-              // 🛣 Draw live route ambulance → hospital
               drawDrivingRoute(
                 updated.ambulanceLat,
                 updated.ambulanceLng,
@@ -338,15 +339,38 @@
                 updated.hospitalLng
               );
 
-              // 🎯 Fit map to ambulance & hospital
+              if (hospitalMarker) map.removeLayer(hospitalMarker);
+              hospitalMarker = L.marker(
+                [updated.hospitalLat, updated.hospitalLng],
+                { icon: hospitalIcon }
+              )
+                .addTo(map)
+                .bindPopup("🏥 Hospital Destination")
+                .openPopup();
+
               const bounds = L.latLngBounds([
                 [updated.ambulanceLat, updated.ambulanceLng],
                 [updated.hospitalLat, updated.hospitalLng],
               ]);
               map.fitBounds(bounds, { padding: [50, 50] });
             }
+          } else if (updated.status === "Completed") {
+            statusArea.innerText = "✅ Trip completed";
+
+            if (ambulanceMarker) {
+              map.removeLayer(ambulanceMarker);
+              ambulanceMarker = null;
+            }
+            if (hospitalMarker) {
+              map.removeLayer(hospitalMarker);
+              hospitalMarker = null;
+            }
+            if (routeLine) {
+              map.removeLayer(routeLine);
+              routeLine = null;
+            }
           }
-        });////
+        });
       };
     </script>
   </body>
