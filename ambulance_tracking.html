@@ -16,9 +16,8 @@
         <div id="info">No active requests.</div>
         <button id="pickupBtn" class="btn btn-primary">✅ Patient Picked Up</button>
       </div>
-  </div>
+    </div>
     
-
     <div id="popup">
       <div id="popupBox">
         <h3>🚨 New Request</h3>
@@ -27,8 +26,6 @@
         <button id="rejectBtn">Reject</button>
       </div>
     </div>
-
-    
 
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script type="module">
@@ -40,6 +37,7 @@
         update,
       } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
+      // 🔹 Firebase Config
       const firebaseConfig = {
         apiKey: "AIzaSyCVOmAoo9h2-VJ6I7OCK2Naj2fYQq_Io1s",
         authDomain: "ambulance-tracking-syste-21793.firebaseapp.com",
@@ -54,6 +52,7 @@
       const app = initializeApp(firebaseConfig);
       const db = getDatabase(app);
 
+      // 🔹 Map Setup
       let routeLine = null;
       const driverIcon = L.icon({
         iconUrl: "https://cdn-icons-png.flaticon.com/512/3181/3181919.png",
@@ -100,9 +99,11 @@
       const driverName = localStorage.getItem("driverName") || "Test Driver";
 
       // --- continuous ambulance location update in DB ---
+      let gpsWorking = false;
       if (navigator.geolocation) {
         navigator.geolocation.watchPosition(
           (pos) => {
+            gpsWorking = true; // mark GPS as available
             const ambLat = pos.coords.latitude;
             const ambLng = pos.coords.longitude;
             update(ref(db, "ambulances/" + driverPlate), {
@@ -115,10 +116,33 @@
             });
           },
           (err) => console.error("Location error:", err),
-          { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
+          { 
+            enableHighAccuracy: true, 
+            timeout: 15000,   // allow more time
+            maximumAge: 5000  // allow cache for 5 sec
+          }
         );
       }
 
+      // --- fallback simulation if no GPS (for desktop demo) ---
+      let simLat = 20.2961;
+      let simLng = 85.8245;
+      setInterval(() => {
+        if (!gpsWorking) { // only simulate if GPS fails
+          simLat += 0.0001;
+          simLng += 0.0001;
+          update(ref(db, "ambulances/" + driverPlate), {
+            driver: driverName,
+            plate: driverPlate,
+            lat: simLat,
+            lng: simLng,
+            status: activeRequestId ? "busy" : "available",
+            lastUpdated: new Date().toISOString(),
+          });
+        }
+      }, 3000);
+
+      // --- listen for requests ---
       const requestsRef = ref(db, "requests");
       onValue(requestsRef, (snapshot) => {
         snapshot.forEach((child) => {
@@ -240,18 +264,14 @@
                 alert("✅ Trip completed!");
                 infoDiv.innerHTML = "Trip marked as completed.";
 
-                // 🔹 Remove hospital marker
                 if (hospitalMarker) {
                   map.removeLayer(hospitalMarker);
                   hospitalMarker = null;
                 }
-
-                // 🔹 Remove polyline route
                 if (routeLine) {
                   map.removeLayer(routeLine);
                   routeLine = null;
                 }
-
                 activeRequestId = null;
               };
             };
