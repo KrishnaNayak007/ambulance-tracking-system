@@ -145,6 +145,26 @@
       const driverPlate = localStorage.getItem("driverPlate") || "TEST123";
       const driverName = localStorage.getItem("driverName") || "Test Driver";
 
+      // --- continuous ambulance location update in DB ---
+      if (navigator.geolocation) {
+        navigator.geolocation.watchPosition(
+          (pos) => {
+            const ambLat = pos.coords.latitude;
+            const ambLng = pos.coords.longitude;
+            update(ref(db, "ambulances/" + driverPlate), {
+              driver: driverName,
+              plate: driverPlate,
+              lat: ambLat,
+              lng: ambLng,
+              status: activeRequestId ? "busy" : "available",
+              lastUpdated: new Date().toISOString(),
+            });
+          },
+          (err) => console.error("Location error:", err),
+          { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
+        );
+      }
+
       const requestsRef = ref(db, "requests");
       onValue(requestsRef, (snapshot) => {
         snapshot.forEach((child) => {
@@ -174,7 +194,6 @@
                   ]);
                 }
 
-                // 🚑 After pickup → hospital
                 if (
                   currentReq.status === "PickedUp" &&
                   currentReq.hospitalLat &&
@@ -254,6 +273,9 @@
                   status: "Completed",
                   completedAt: new Date().toISOString(),
                 });
+                await update(ref(db, "ambulances/" + driverPlate), {
+                  status: "available",
+                });
                 alert("✅ Trip completed!");
                 infoDiv.innerHTML = "Trip marked as completed.";
                 if (hospitalMarker) {
@@ -282,3 +304,4 @@
     </script>
   </body>
 </html>
+
