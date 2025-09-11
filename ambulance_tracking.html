@@ -8,9 +8,16 @@
     <link rel="stylesheet" href="ambulance_tracking.css"/>
   </head>
   <body>
-    <h2 style="padding: 10px">🚑 Ambulance Tracking</h2>
-    <div id="map"></div>
-    <div id="info">No active requests.</div>
+    <h2>🚑 Ambulance Tracking</h2>
+    <div class="main-container">
+      <div id="map"></div>
+    
+      <div class="side-panel">
+        <div id="info">No active requests.</div>
+        <button id="pickupBtn" class="btn btn-primary">✅ Patient Picked Up</button>
+      </div>
+  </div>
+    
 
     <div id="popup">
       <div id="popupBox">
@@ -21,7 +28,7 @@
       </div>
     </div>
 
-    <button id="pickupBtn" class="btn btn-primary">✅ Patient Picked Up</button>
+    
 
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script type="module">
