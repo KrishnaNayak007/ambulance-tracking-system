@@ -57,14 +57,6 @@
       th {
         background: #efefef;
       }
-      .alert {
-        background: #dc2626;
-        color: white;
-        padding: 8px;
-        border-radius: 4px;
-        margin-top: 10px;
-        font-size: 14px;
-      }
     </style>
   </head>
   <body>
@@ -86,7 +78,6 @@
           </thead>
           <tbody></tbody>
         </table>
-        <div id="alerts"></div>
       </div>
     </div>
 
@@ -96,7 +87,6 @@
         getDatabase,
         ref,
         onValue,
-        remove,
       } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
       // Firebase config
@@ -119,30 +109,35 @@
         attribution: "© OpenStreetMap contributors",
       }).addTo(map);
 
-      // Global storage for ambulance markers, routes & hospital circles
+      // Global storage
       window.ambulanceMarkers = {};
       window.routeLines = {};
       window.hospitalCircles = {};
 
       const requestsTableBody = document.querySelector("#requestsTable tbody");
-      const alertsDiv = document.getElementById("alerts");
 
-      // Distance helper
-      function getDistanceKm(lat1, lon1, lat2, lon2) {
-        const R = 6371;
-        const dLat = ((lat2 - lat1) * Math.PI) / 180;
-        const dLon = ((lon2 - lon1) * Math.PI) / 180;
-        const a =
-          Math.sin(dLat / 2) ** 2 +
-          Math.cos((lat1 * Math.PI) / 180) *
-            Math.cos((lat2 * Math.PI) / 180) *
-            Math.sin(dLon / 2) ** 2;
-        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      // Smooth marker movement
+      function smoothMove(marker, newLatLng) {
+        const current = marker.getLatLng();
+        const steps = 20;
+        let i = 0;
+        const interval = setInterval(() => {
+          if (i >= steps) {
+            clearInterval(interval);
+            return;
+          }
+          const lat =
+            current.lat + ((newLatLng.lat - current.lat) / steps) * i;
+          const lng =
+            current.lng + ((newLatLng.lng - current.lng) / steps) * i;
+          marker.setLatLng([lat, lng]);
+          i++;
+        }, 50);
       }
 
       // Draw route using OSRM
-      async function drawRoute(id, ambLat, ambLng, hospLat, hospLng) {
-        const url = `https://router.project-osrm.org/route/v1/driving/${ambLng},${ambLat};${hospLng},${hospLat}?overview=full&geometries=geojson`;
+      async function drawRoute(id, ambLat, ambLng, destLat, destLng) {
+        const url = `https://router.project-osrm.org/route/v1/driving/${ambLng},${ambLat};${destLng},${destLat}?overview=full&geometries=geojson`;
         const resp = await fetch(url);
         const data = await resp.json();
         if (!data.routes || !data.routes.length) return;
@@ -194,45 +189,39 @@
       // Listen to requests
       const requestsRef = ref(db, "requests");
       onValue(requestsRef, (snapshot) => {
-        requestsTableBody.innerHTML = "";
         snapshot.forEach((child) => {
           const req = child.val();
           const id = child.key;
 
-          // If completed → remove everything
+          // ✅ Remove if completed
           if (req.status === "Completed") {
             clearAmbulanceFromMap(id);
             return;
           }
 
-          // Only show if accepted or picked up
+          // Show only if accepted or picked up
           if (req.status === "Accepted" || req.status === "PickedUp") {
             addRequestToTable(req, id);
 
-            // Add hospital circle once
-            if (
-              req.pickup?.lat &&
-              req.pickup?.lng &&
-              !window.hospitalCircles[id]
-            ) {
+            // Add hospital circle (2 km)
+            if (req.hospitalLat && req.hospitalLng && !window.hospitalCircles[id]) {
               window.hospitalCircles[id] = L.circle(
-                [req.pickup.lat, req.pickup.lng],
+                [req.hospitalLat, req.hospitalLng],
                 {
                   radius: 2000,
-                  color: "blue",
+                  color: "red",
                   fillOpacity: 0.1,
                 }
               ).addTo(map);
             }
 
-            // Add/update ambulance marker
+            // Add / update ambulance marker
             if (!window.ambulanceMarkers[id]) {
               window.ambulanceMarkers[id] = L.marker(
                 [req.ambulanceLat, req.ambulanceLng],
                 {
                   icon: L.icon({
-                    iconUrl:
-                      "https://cdn-icons-png.flaticon.com/512/3181/3181919.png",
+                    iconUrl: "https://cdn-icons-png.flaticon.com/512/3181/3181919.png",
                     iconSize: [32, 32],
                     iconAnchor: [16, 16],
                   }),
@@ -245,20 +234,14 @@
                    Status: ${req.status || "-"}`
                 );
             } else {
-              window.ambulanceMarkers[id].setLatLng([
-                req.ambulanceLat,
-                req.ambulanceLng,
-              ]);
+              smoothMove(
+                window.ambulanceMarkers[id],
+                L.latLng(req.ambulanceLat, req.ambulanceLng)
+              );
             }
 
-            fitMapToAmbulances();
-
-            // Draw route (to pickup or hospital)
-            if (
-              req.status === "PickedUp" &&
-              req.hospitalLat &&
-              req.hospitalLng
-            ) {
+            // Draw correct route
+            if (req.status === "PickedUp" && req.hospitalLat && req.hospitalLng) {
               drawRoute(
                 id,
                 req.ambulanceLat,
@@ -278,17 +261,6 @@
           }
         });
       });
-
-      function fitMapToAmbulances() {
-        const markers = Object.values(window.ambulanceMarkers);
-        if (markers.length === 0) {
-          map.setView([20.59, 78.96], 5); // default India view
-          return;
-        }
-
-        const group = L.featureGroup(markers);
-        map.fitBounds(group.getBounds(), { padding: [50, 50] });
-      }
     </script>
   </body>
 </html>
