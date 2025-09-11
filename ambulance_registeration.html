@@ -14,14 +14,16 @@
   <h2>🚑 Driver Registration</h2>
   <input id="driverName" placeholder="Driver Name" />
   <input id="ambulancePlate" placeholder="Ambulance Plate No." />
-  <select id="hospitalSelect"></select>
+  <select id="hospitalSelect">
+    <option value="">-- Municipal Ambulance (No Hospital) --</option>
+  </select>
   <button id="registerBtn">Register</button>
   <div id="status"></div>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
     import { getDatabase, ref, set } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
-    import { odishaHospitals } from './Hospitals.js'; // Make sure path is correct
+    import { odishaHospitals } from './hospitals.js';
 
     // Firebase config
     const firebaseConfig = {
@@ -37,26 +39,38 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    // Populate hospitals dropdown
+    // Populate hospital dropdown
     const hospitalSelect = document.getElementById("hospitalSelect");
-    hospitalSelect.innerHTML = `<option value="">-- Select Hospital --</option>` +
-      odishaHospitals.map(h => `<option value="${h}">${h}</option>`).join("");
+    odishaHospitals.forEach(h => {
+      const opt = document.createElement("option");
+      opt.value = h.name;
+      opt.textContent = h.name;
+      hospitalSelect.appendChild(opt);
+    });
 
     document.getElementById("registerBtn").onclick = async () => {
       const name = document.getElementById("driverName").value.trim();
       const plate = document.getElementById("ambulancePlate").value.trim();
-      const hospital = hospitalSelect.value;
+      const hospital = hospitalSelect.value || null;
 
-      if (!name || !plate || !hospital) {
+      if (!name || !plate) {
         alert("Fill all fields!");
         return;
       }
 
       try {
-        const driverRef = ref(db, "drivers/" + plate);
-        await set(driverRef, { driverName: name, ambulancePlate: plate, hospital });
+        const ambRef = ref(db, "ambulances/" + plate);
+        await set(ambRef, {
+          driver: name,
+          plate: plate,
+          hospital: hospital,  // null if not selected
+          status: "available",
+          lat: null,
+          lng: null,
+          lastUpdated: null
+        });
 
-        localStorage.setItem("driverPlate", plate); // Save login locally
+        localStorage.setItem("driverPlate", plate); // Save plate locally
         document.getElementById("status").innerText = "✅ Registered successfully!";
         setTimeout(() => { window.location.href = "ambulance_tracking.html"; }, 1500);
       } catch (error) {
