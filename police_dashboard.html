@@ -57,6 +57,20 @@
       th {
         background: #efefef;
       }
+
+      /* Alert panel */
+      .alert-panel {
+        background: #fff;
+        margin: 15px 20px;
+        padding: 15px;
+        border-radius: 6px;
+        border: 1px solid #ddd;
+      }
+      .alert-panel h3 {
+        margin-top: 0;
+      }
+      .alert-panel ul { padding-left: 18px; max-height: 200px; overflow-y: auto; }
+      .alert-panel li { margin-bottom: 6px; font-size: 14px; }
     </style>
   </head>
   <body>
@@ -81,6 +95,11 @@
       </div>
     </div>
 
+    <div class="alert-panel">
+      <h3>🚨 Simulation Alerts</h3>
+      <ul id="alertList"></ul>
+    </div>
+
     <script type="module">
       import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
       import {
@@ -89,7 +108,7 @@
         onValue,
       } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
-      // Firebase config
+      // ---------------- Firebase config ----------------
       const firebaseConfig = {
         apiKey: "AIzaSyCVOmAoo9h2-VJ6I7OCK2Naj2fYQq_Io1s",
         authDomain: "ambulance-tracking-syste-21793.firebaseapp.com",
@@ -103,13 +122,13 @@
       const app = initializeApp(firebaseConfig);
       const db = getDatabase(app);
 
-      // Map setup
+      // ---------------- Map setup ----------------
       const map = L.map("map").setView([20.59, 78.96], 5);
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution: "© OpenStreetMap contributors",
       }).addTo(map);
 
-      // Global storage
+      // ---------------- Global storage ----------------
       window.ambulanceMarkers = {};
       window.routeLines = {};
       window.hospitalCircles = {};
@@ -117,42 +136,52 @@
 
       const requestsTableBody = document.querySelector("#requestsTable tbody");
 
-      // Smooth marker movement
+      // ---------------- Alerts panel helper ----------------
+      function addAlert(msg) {
+        const list = document.getElementById("alertList");
+        if (!list) return;
+        const item = document.createElement("li");
+        item.textContent = `• ${msg}`;
+        list.prepend(item);
+      }
+
+      // ---------------- Smooth marker movement ----------------
       function smoothMove(marker, newLatLng) {
-        const current = marker.getLatLng();
-        const steps = 20;
-        let i = 0;
-        const interval = setInterval(() => {
-          if (i >= steps) {
-            clearInterval(interval);
-            return;
-          }
-          const lat = current.lat + ((newLatLng.lat - current.lat) / steps) * i;
-          const lng = current.lng + ((newLatLng.lng - current.lng) / steps) * i;
-          marker.setLatLng([lat, lng]);
-          i++;
-        }, 50);
+        try {
+          const current = marker.getLatLng();
+          const steps = 20;
+          let i = 0;
+          const interval = setInterval(() => {
+            if (i >= steps) {
+              clearInterval(interval);
+              return;
+            }
+            const lat = current.lat + ((newLatLng.lat - current.lat) / steps) * i;
+            const lng = current.lng + ((newLatLng.lng - current.lng) / steps) * i;
+            marker.setLatLng([lat, lng]);
+            i++;
+          }, 50);
+        } catch (e) {
+          // marker might be removed — ignore
+        }
       }
 
-      // Draw route using OSRM
+      // ---------------- Draw simple route (OSRM) ----------------
       async function drawRoute(id, ambLat, ambLng, destLat, destLng) {
-        const url = `https://router.project-osrm.org/route/v1/driving/${ambLng},${ambLat};${destLng},${destLat}?overview=full&geometries=geojson`;
-        const resp = await fetch(url);
-        const data = await resp.json();
-        if (!data.routes || !data.routes.length) return;
-
-        const coords = data.routes[0].geometry.coordinates.map((c) => [
-          c[1],
-          c[0],
-        ]);
-        if (window.routeLines[id]) map.removeLayer(window.routeLines[id]);
-        window.routeLines[id] = L.polyline(coords, {
-          color: "blue",
-          weight: 4,
-        }).addTo(map);
+        try {
+          const url = `https://router.project-osrm.org/route/v1/driving/${ambLng},${ambLat};${destLng},${destLat}?overview=full&geometries=geojson`;
+          const resp = await fetch(url);
+          const data = await resp.json();
+          if (!data.routes || !data.routes.length) return;
+          const coords = data.routes[0].geometry.coordinates.map((c) => [c[1], c[0]]);
+          if (window.routeLines[id]) map.removeLayer(window.routeLines[id]);
+          window.routeLines[id] = L.polyline(coords, { color: "blue", weight: 4 }).addTo(map);
+        } catch (err) {
+          console.error("drawRoute error", err);
+        }
       }
 
-      // Clear visuals
+      // ---------------- Clear visuals ----------------
       function clearAmbulanceFromMap(id) {
         if (window.ambulanceMarkers[id]) {
           map.removeLayer(window.ambulanceMarkers[id]);
@@ -175,7 +204,7 @@
         insideAmbulances.delete(id);
       }
 
-      // Add request row
+      // ---------------- Add request to table ----------------
       function addRequestToTable(req, id) {
         let row = document.getElementById(`request-row-${id}`);
         if (!row) {
@@ -192,29 +221,29 @@
         `;
       }
 
-      // Police location + 2km zone
-      let policeLat = null,
-        policeLng = null,
-        policeCircle = null;
+      // ---------------- Police location + 2km zone ----------------
+      let policeLat = null, policeLng = null, policeCircle = null;
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition((pos) => {
           policeLat = pos.coords.latitude;
           policeLng = pos.coords.longitude;
           policeCircle = L.circle([policeLat, policeLng], {
-            radius: 2000,
-            color: "blue",
-            fillColor: "blue",
-            fillOpacity: 0.1,
-          })
-            .addTo(map)
-            .bindPopup("🚓 Police 2km Zone");
+            radius: 2000, color: "blue", fillColor: "blue", fillOpacity: 0.1
+          }).addTo(map).bindPopup("🚓 Police 2km Zone");
           map.setView([policeLat, policeLng], 14);
-        });
+        }, (err) => {
+          // fallback: center on Bhubaneswar if geolocation blocked
+          console.warn("Geolocation error (police):", err);
+          map.setView([20.2961, 85.8245], 12);
+        }, { enableHighAccuracy: true, timeout: 8000 });
+      } else {
+        map.setView([20.2961, 85.8245], 12);
       }
 
-      // ================= IoT Alert System ===================
+      // ---------------- IoT demo: dynamic cars + markers ----------------
       let smartCars = [];
       let smartCarMarkers = {};
+      const carAlerted = new Set();
 
       function spawnCarsNearAmbulance(ambLat, ambLng) {
         smartCars.length = 0;
@@ -230,13 +259,18 @@
       }
 
       function notifyNearbyCars(ambLat, ambLng, ambPlate) {
-        spawnCarsNearAmbulance(ambLat, ambLng); // always spawn dynamic cars
+        // always spawn dynamic cars so demo always shows alerts for presentation
+        spawnCarsNearAmbulance(ambLat, ambLng);
         smartCars.forEach((car) => {
           const dist = map.distance([ambLat, ambLng], [car.lat, car.lng]);
-          if (dist <= 800) {
-            alert(
-              `📢 IoT Alert: Car ${car.plate} (Driver: ${car.driver}) → Ambulance ${ambPlate} approaching- please give way!`
-            );
+          const uniqueId = `${ambPlate || "amb"}_${car.id}`;
+
+          if (dist <= 800 && !carAlerted.has(uniqueId)) {
+            carAlerted.add(uniqueId);
+
+            // Add to alert panel (no loud popup spam)
+            addAlert(`📢 IoT Alert: Car ${car.plate} (Driver: ${car.driver}) → Ambulance ${ambPlate} approaching — please give way!`);
+
             if (!smartCarMarkers[car.id]) {
               smartCarMarkers[car.id] = L.marker([car.lat, car.lng], {
                 icon: L.icon({
@@ -244,21 +278,22 @@
                   iconSize: [28, 28],
                   iconAnchor: [14, 14],
                 }),
-              })
-                .addTo(map)
-                .bindPopup(`🚗 Car: ${car.plate}<br>Driver: ${car.driver}`);
+              }).addTo(map).bindPopup(`🚗 Car: ${car.plate}<br>Driver: ${car.driver}`);
             }
+
+            // auto-clear marker and allow future alerts after 20s
             setTimeout(() => {
               if (smartCarMarkers[car.id]) {
                 map.removeLayer(smartCarMarkers[car.id]);
                 delete smartCarMarkers[car.id];
               }
+              carAlerted.delete(uniqueId);
             }, 20000);
           }
         });
       }
 
-      // ================= ETA + Traffic Route ===================
+      // ---------------- ETA + Traffic Route (colored segments) ----------------
       function getColorForETA(eta) {
         if (eta <= 5) return "green";
         if (eta <= 10) return "orange";
@@ -272,123 +307,213 @@
           const data = await resp.json();
           if (!data.routes || !data.routes.length) return;
 
+          // clear previous segments if any
           if (window.routeLines[id]) {
-            window.routeLines[id].forEach((line) => map.removeLayer(line));
+            if (Array.isArray(window.routeLines[id])) {
+              window.routeLines[id].forEach((line) => map.removeLayer(line));
+            } else {
+              map.removeLayer(window.routeLines[id]);
+            }
             delete window.routeLines[id];
           }
           window.routeLines[id] = [];
 
-          const coords = data.routes[0].legs[0].steps.map((step) =>
-            step.geometry.coordinates.map((c) => [c[1], c[0]])
-          );
-          coords.forEach((segment, idx) => {
-            const segDist = data.routes[0].legs[0].steps[idx].distance;
+          const steps = data.routes[0].legs[0].steps;
+          const coordsPerStep = steps.map(step => step.geometry.coordinates.map(c => [c[1], c[0]]));
+
+          coordsPerStep.forEach((segment, idx) => {
+            const segDist = steps[idx].distance;
             let color = "green";
             if (segDist > 800) color = "red";
             else if (segDist > 400) color = "yellow";
-            L.polyline(segment, { color, weight: 6 }).addTo(map);
+            const poly = L.polyline(segment, { color, weight: 6 }).addTo(map);
+            window.routeLines[id].push(poly);
           });
-          map.fitBounds(L.polyline(coords.flat(), {}).getBounds(), {
-            padding: [30, 30],
-          });
+
+          map.fitBounds(L.polyline(coordsPerStep.flat(), {}).getBounds(), { padding: [30,30] });
         } catch (err) {
           console.error("Traffic Route Error:", err);
         }
       }
 
-      // ================= Firebase Request Listener ===================
+      // ---------------- Firebase requests listener ----------------
       const requestsRef = ref(db, "requests");
       requestsTableBody.innerHTML = "";
+
       onValue(requestsRef, (snapshot) => {
         snapshot.forEach((child) => {
           const req = child.val();
           const id = child.key;
 
-          if (!req.ambulanceLat || !req.ambulanceLng || !policeLat || !policeLng)
-            return;
+          // skip if missing data or police location unknown yet
+          if (!req || !req.ambulanceLat || !req.ambulanceLng || !policeLat || !policeLng) return;
 
           const ambLatLng = L.latLng(req.ambulanceLat, req.ambulanceLng);
           const distance = map.distance([policeLat, policeLng], ambLatLng);
 
+          // remove trip if completed or out of 2km range
           if (req.status === "Completed" || distance > 2000) {
             clearAmbulanceFromMap(id);
             return;
           }
 
+          // first time ambulance enters police 2km zone
           if (!insideAmbulances.has(id) && distance <= 2000) {
             insideAmbulances.add(id);
             if (req.ambulancePlate && req.ambulancePlate !== "null") {
-              alert(
-                `🚨 Ambulance ${
-                  req.ambulancePlate || id
-                } entered police 2km zone!`
-              );
+              addAlert(`🚨 Ambulance ${req.ambulancePlate || id} entered police 2km zone!`);
+              addAlert("🚦 Traffic Light turned GREEN for ambulance!");
             }
           }
 
+          // show only accepted/pickedup statuses
           if (req.status === "Accepted" || req.status === "PickedUp") {
             addRequestToTable(req, id);
 
-            if (
-              req.hospitalLat &&
-              req.hospitalLng &&
-              !window.hospitalCircles[id]
-            ) {
-              window.hospitalCircles[id] = L.circle(
-                [req.hospitalLat, req.hospitalLng],
-                { radius: 2000, color: "red", fillOpacity: 0.1 }
-              ).addTo(map);
+            // add hospital circle if available
+            if (req.hospitalLat && req.hospitalLng && !window.hospitalCircles[id]) {
+              window.hospitalCircles[id] = L.circle([req.hospitalLat, req.hospitalLng], { radius: 2000, color: "red", fillOpacity: 0.1 }).addTo(map);
             }
 
+            // add / update ambulance marker
             if (!window.ambulanceMarkers[id]) {
-              window.ambulanceMarkers[id] = L.marker(
-                [req.ambulanceLat, req.ambulanceLng],
-                {
-                  icon: L.icon({
-                    iconUrl:
-                      "https://cdn-icons-png.flaticon.com/512/3181/3181919.png",
-                    iconSize: [32, 32],
-                    iconAnchor: [16, 16],
-                  }),
-                }
-              ).addTo(map);
+              window.ambulanceMarkers[id] = L.marker([req.ambulanceLat, req.ambulanceLng], {
+                icon: L.icon({
+                  iconUrl: "https://cdn-icons-png.flaticon.com/512/3181/3181919.png",
+                  iconSize: [32,32],
+                  iconAnchor: [16,16]
+                })
+              }).addTo(map);
             }
 
-            window.ambulanceMarkers[id].bindPopup(
-              `🚑 Plate: ${req.ambulancePlate || "-"}<br>
-               Hospital: ${req.hospitalId || "-"}<br>
-               Status: ${req.status || "-"}`
-            );
+            // keep popup updated
+            window.ambulanceMarkers[id].bindPopup(`🚑 Plate: ${req.ambulancePlate || "-"}<br>Hospital: ${req.hospitalId || "-"}<br>Status: ${req.status || "-"}`);
 
+            // smooth move marker to new position
             smoothMove(window.ambulanceMarkers[id], ambLatLng);
 
-            // 🔹 IoT Alert always fires with dynamic car spawn
+            // IoT demo: spawn cars and notify
             notifyNearbyCars(req.ambulanceLat, req.ambulanceLng, req.ambulancePlate);
 
+            // Trigger other smart-city simulated features (billboards, drone, lights)
+            triggerBillboardAlert(req.ambulanceLat, req.ambulanceLng);
+            deployDrone(id, req.ambulanceLat, req.ambulanceLng);
+            updateTrafficLights(req.ambulanceLat, req.ambulanceLng);
+            blinkStreetLights(req.ambulanceLat, req.ambulanceLng);
+
+            // draw appropriate route
             if (req.status === "PickedUp" && req.hospitalLat && req.hospitalLng) {
               if (window.routeLines[id]) {
-                map.removeLayer(window.routeLines[id]);
+                if (Array.isArray(window.routeLines[id])) window.routeLines[id].forEach(l => map.removeLayer(l));
+                else map.removeLayer(window.routeLines[id]);
                 delete window.routeLines[id];
               }
-              drawTrafficRoute(
-                id,
-                req.ambulanceLat,
-                req.ambulanceLng,
-                req.hospitalLat,
-                req.hospitalLng
-              );
+              drawTrafficRoute(id, req.ambulanceLat, req.ambulanceLng, req.hospitalLat, req.hospitalLng);
+              addAlert("🖼 Digital Billboard: 'Ambulance Approaching — Clear Lane!'");
             } else if (req.pickup?.lat && req.pickup?.lng) {
-              drawTrafficRoute(
-                id,
-                req.ambulanceLat,
-                req.ambulanceLng,
-                req.pickup.lat,
-                req.pickup.lng
-              );
+              drawTrafficRoute(id, req.ambulanceLat, req.ambulanceLng, req.pickup.lat, req.pickup.lng);
+              addAlert("🚁 Drone deployed ahead to scout traffic.");
+            }
+          } // end Accepted/PickedUp branch
+        }); // end forEach
+      }); // end onValue
+
+      // ---------------- Simulation objects (billboard/drone/lights) ----------------
+      const billboardIcon = "https://cdn-icons-png.flaticon.com/512/2972/2972068.png";
+      const droneIcon = "https://cdn-icons-png.flaticon.com/512/711/711245.png";
+      const trafficLightRed = "https://cdn-icons-png.flaticon.com/512/483/483361.png";
+      const trafficLightGreen = "https://cdn-icons-png.flaticon.com/512/483/483408.png";
+      const streetLightIcon = "https://cdn-icons-png.flaticon.com/512/1048/1048949.png";
+
+      let billboardMarkers = [];
+      let trafficLightMarkers = [];
+      let streetLightMarkers = [];
+      let droneMarkers = {};
+      // store blink intervals so we can clear duplicates
+      let streetLightBlinkIntervals = {};
+
+      function setupSimulationObjects() {
+        // Billboards
+        billboardMarkers = [
+          L.marker([20.296, 85.824], { icon: L.icon({ iconUrl: billboardIcon, iconSize: [32,32] }) }).addTo(map).bindPopup("🖼 Billboard"),
+          L.marker([20.3, 85.828],    { icon: L.icon({ iconUrl: billboardIcon, iconSize: [32,32] }) }).addTo(map).bindPopup("🖼 Billboard")
+        ];
+
+        // Traffic Lights
+        trafficLightMarkers = [
+          L.marker([20.298, 85.826], { icon: L.icon({ iconUrl: trafficLightRed, iconSize: [28,28] }) }).addTo(map).bindPopup("🚦 Traffic Light"),
+          L.marker([20.302, 85.83],  { icon: L.icon({ iconUrl: trafficLightRed, iconSize: [28,28] }) }).addTo(map).bindPopup("🚦 Traffic Light")
+        ];
+
+        // Street Lights
+        streetLightMarkers = [
+          L.marker([20.299, 85.827], { icon: L.icon({ iconUrl: streetLightIcon, iconSize: [26,26] }) }).addTo(map).bindPopup("💡 Smart Street Light"),
+          L.marker([20.301, 85.829], { icon: L.icon({ iconUrl: streetLightIcon, iconSize: [26,26] }) }).addTo(map).bindPopup("💡 Smart Street Light")
+        ];
+      }
+      setupSimulationObjects();
+
+      // Trigger billboard alert: make billboard more visible and add alert -> opens popup
+      function triggerBillboardAlert(ambLat, ambLng) {
+        billboardMarkers.forEach((b) => {
+          const dist = map.distance([ambLat, ambLng], b.getLatLng());
+          if (dist <= 1000) {
+            b.setOpacity(1.0);
+            b.bindPopup("🚨 Billboard Alert: Ambulance Nearby!").openPopup();
+            addAlert("🖼 Digital Billboard: 'Ambulance Approaching — Clear Lane!'");
+          } else {
+            b.setOpacity(0.5);
+          }
+        });
+      }
+
+      // Drone scouting: position drone a bit ahead of ambulance
+      function deployDrone(id, ambLat, ambLng) {
+        const droneOffset = [ambLat + 0.003, ambLng + 0.003];
+        if (!droneMarkers[id]) {
+          droneMarkers[id] = L.marker(droneOffset, { icon: L.icon({ iconUrl: droneIcon, iconSize: [30,30] }) })
+            .addTo(map).bindPopup("🚁 Drone Scouting");
+        } else {
+          droneMarkers[id].setLatLng(droneOffset);
+        }
+      }
+
+      // Traffic light pre-emption: switch icon to green when ambulance near
+      function updateTrafficLights(ambLat, ambLng) {
+        trafficLightMarkers.forEach((t) => {
+          const dist = map.distance([ambLat, ambLng], t.getLatLng());
+          const iconUrl = dist <= 300 ? trafficLightGreen : trafficLightRed;
+          t.setIcon(L.icon({ iconUrl, iconSize: [28,28] }));
+          if (dist <= 300) addAlert("🚦 Traffic Light turned GREEN for ambulance!");
+        });
+      }
+
+      // Street light blinking simulation: only create one interval per marker
+      function blinkStreetLights(ambLat, ambLng) {
+        streetLightMarkers.forEach((s, idx) => {
+          const dist = map.distance([ambLat, ambLng], s.getLatLng());
+          const key = `street-${idx}`;
+          if (dist <= 400) {
+            if (!streetLightBlinkIntervals[key]) {
+              let visible = true;
+              streetLightBlinkIntervals[key] = setInterval(() => {
+                visible = !visible;
+                if (s && s.setOpacity) s.setOpacity(visible ? 1.0 : 0.3);
+              }, 700);
+              addAlert("💡 Smart streetlights flashing BLUE-WHITE near ambulance!");
+            }
+          } else {
+            // stop blinking if previously started
+            if (streetLightBlinkIntervals[key]) {
+              clearInterval(streetLightBlinkIntervals[key]);
+              streetLightBlinkIntervals[key] = null;
+              if (s && s.setOpacity) s.setOpacity(1.0);
             }
           }
         });
-      });
+      }
+
+      // ------------- End of script -------------
     </script>
   </body>
 </html>
