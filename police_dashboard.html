@@ -235,7 +235,7 @@
           const dist = map.distance([ambLat, ambLng], [car.lat, car.lng]);
           if (dist <= 800) {
             alert(
-              `📢 IoT Alert: Car ${car.plate} (Driver: ${car.driver}) → Ambulance ${ambPlate} is nearby!`
+              `📢 IoT Alert: Car ${car.plate} (Driver: ${car.driver}) → Ambulance ${ambPlate} approaching- please give way!`
             );
             if (!smartCarMarkers[car.id]) {
               smartCarMarkers[car.id] = L.marker([car.lat, car.lng], {
